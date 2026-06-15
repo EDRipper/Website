@@ -19,7 +19,7 @@
 
 	<article class="panel">
 		<h1>{title}</h1>
-		<p class="muted">Mission log — coming soon.</p>
+		<p class="muted">ill write the blogs later :p</p>
 	</article>
 </main>
 

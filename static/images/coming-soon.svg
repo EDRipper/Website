@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300" width="600" height="300" role="img" aria-label="Coming soon">
+	<rect width="600" height="300" fill="#1a1814" />
+	<g fill="none" stroke="#f0ede4" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+		<circle cx="300" cy="108" r="42" />
+		<path d="M300 84 v24 l18 12" />
+	</g>
+	<text x="300" y="198" fill="#f0ede4" font-family="'Departure Mono', monospace" font-size="44" font-weight="bold" letter-spacing="6" text-anchor="middle">COMING SOON</text>
+	<text x="300" y="232" fill="#8f8a7e" font-family="'Departure Mono', monospace" font-size="18" letter-spacing="3" text-anchor="middle">MISSION LOG IN PROGRESS</text>
+</svg>
