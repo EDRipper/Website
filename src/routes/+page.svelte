@@ -8,6 +8,73 @@
 		document.body.classList.toggle('dark', dark);
 	});
 
+	// ── Synthesised audio: menu SFX + chiptune background loop (no files) ──
+	let soundOn = $state(true);
+	let musicOn = $state(false);
+	let audioCtx: AudioContext | null = null;
+	function getCtx(): AudioContext | null {
+		const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+		if (!Ctx) return null;
+		audioCtx ??= new Ctx();
+		if (audioCtx.state === 'suspended') audioCtx.resume();
+		return audioCtx;
+	}
+	function voice(freq: number, dur: number, vol: number, type: OscillatorType = 'square', when = 0) {
+		const ctx = getCtx();
+		if (!ctx) return;
+		const t = ctx.currentTime + when;
+		const osc = ctx.createOscillator();
+		const gain = ctx.createGain();
+		osc.type = type;
+		osc.frequency.value = freq;
+		gain.gain.setValueAtTime(vol, t);
+		gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+		osc.connect(gain);
+		gain.connect(ctx.destination);
+		osc.start(t);
+		osc.stop(t + dur);
+	}
+	// Cursor-move tick on hover; two-note "confirm" rise on select.
+	const moveSound = () => soundOn && voice(740, 0.03, 0.035);
+	const selectSound = () => {
+		if (!soundOn) return;
+		voice(660, 0.06, 0.05);
+		voice(990, 0.08, 0.05, 'square', 0.055);
+	};
+
+	// Background music: track dropped for now; toggle kept for when one returns.
+
+	onMount(() => {
+		const sel = 'a, button, .mission, .slot';
+		let last: Element | null = null;
+		const over = (e: PointerEvent) => {
+			const el = (e.target as Element)?.closest?.(sel);
+			if (el && el !== last) {
+				last = el;
+				moveSound();
+			} else if (!el) {
+				last = null;
+			}
+		};
+		const click = (e: MouseEvent) => {
+			if ((e.target as Element)?.closest?.(sel)) selectSound();
+		};
+		// Browsers keep audio suspended until a real gesture (hover doesn't count),
+		// so prime the context on the first pointer/key press anywhere.
+		const unlock = () => getCtx();
+		window.addEventListener('pointerdown', unlock, { once: true });
+		window.addEventListener('keydown', unlock, { once: true });
+
+		document.addEventListener('pointerover', over);
+		document.addEventListener('click', click);
+		return () => {
+			window.removeEventListener('pointerdown', unlock);
+			window.removeEventListener('keydown', unlock);
+			document.removeEventListener('pointerover', over);
+			document.removeEventListener('click', click);
+		};
+	});
+
 	// Animated ordered-dither (Bayer) plasma, drawn faintly behind everything.
 	let bg!: HTMLCanvasElement;
 	onMount(() => {
@@ -110,6 +177,20 @@
 		return y;
 	}
 	const level = yearsSince(2006, 11, 26);
+
+	// Fraction (0–100) of the current year of age elapsed, for the XP bar.
+	function ageProgress(month: number, day: number): number {
+		const now = new Date();
+		let last = new Date(now.getFullYear(), month - 1, day);
+		if (now < last) last = new Date(now.getFullYear() - 1, month - 1, day);
+		const next = new Date(last.getFullYear() + 1, month - 1, day);
+		return Math.min(100, Math.max(0, ((+now - +last) / (+next - +last)) * 100));
+	}
+	const agePct = Math.round(ageProgress(11, 26));
+	let xp = $state(0);
+	onMount(() => {
+		xp = agePct;
+	});
 
 	type Status = 'COMPLETE' | 'IN PROGRESS';
 	type Mission = {
@@ -246,6 +327,42 @@
 		<div class="controls">
 		<button
 			class="toggle"
+			class:active={musicOn}
+			onclick={() => (musicOn = !musicOn)}
+			aria-label={musicOn ? 'Stop background music' : 'Play background music'}
+			aria-pressed={musicOn}
+			title={musicOn ? 'Stop music' : 'Play music'}
+		>
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<path d="M9 18V5l12-2v13" />
+				<circle cx="6" cy="18" r="3" />
+				<circle cx="18" cy="16" r="3" />
+			</svg>
+		</button>
+		<button
+			class="toggle"
+			onclick={() => (soundOn = !soundOn)}
+			aria-label={soundOn ? 'Mute sound effects' : 'Unmute sound effects'}
+			aria-pressed={soundOn}
+			title={soundOn ? 'Mute sound effects' : 'Unmute sound effects'}
+		>
+			{#if soundOn}
+				<!-- speaker on -->
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M11 5 6 9H2v6h4l5 4z" />
+					<path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+				</svg>
+			{:else}
+				<!-- speaker muted -->
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M11 5 6 9H2v6h4l5 4z" />
+					<line x1="23" y1="9" x2="17" y2="15" />
+					<line x1="17" y1="9" x2="23" y2="15" />
+				</svg>
+			{/if}
+		</button>
+		<button
+			class="toggle"
 			onclick={() => (dark = !dark)}
 			aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
 			title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -309,6 +426,10 @@
 					<span class="lvl-badge">Level {level}</span>
 					<span class="location">LOCATION: VERMONT</span>
 				</div>
+				<div class="xp">
+					<div class="xp-track"><div class="xp-fill" style="width: {xp}%"></div></div>
+					<span class="xp-label">{agePct}% through Level {level} → {level + 1}</span>
+				</div>
 				<p class="likes">LIKES: circus arts, robotics, web dev, hackathons</p>
 
 				<h3 class="sub">STATS</h3>
@@ -332,7 +453,7 @@
 
 				<hr class="divider" />
 
-				<h3 class="sub">INVENTORY</h3>
+				<h3 class="sub">Inventory: Useful tools I've picked up</h3>
 				<div class="inventory">
 					{#each inventory as item (item.name)}
 						<span class="slot" title={item.name}>
@@ -349,11 +470,13 @@
 
 	</div>
 
-	<hr class="rule" />
-
 	<!-- ── Missions (projects) ── -->
-	<section class="panel missions">
+	<div class="section-head">
+		<span class="line"></span>
 		<h2>Missions: The adventures I'm lucky enough to do for work</h2>
+		<span class="line"></span>
+	</div>
+	<section class="panel missions">
 		<div class="mission-grid">
 			{#each missions as m (m.name)}
 				{@const external = m.href?.startsWith('http')}
@@ -383,11 +506,13 @@
 		</div>
 	</section>
 
-	<hr class="rule" />
-
 	<!-- ── Sidequests ── -->
-	<section class="panel sidequests">
+	<div class="section-head">
+		<span class="line"></span>
 		<h2>Sidequests: The lore I'm building for the fun of it</h2>
+		<span class="line"></span>
+	</div>
+	<section class="panel sidequests">
 		<div class="mission-grid">
 			{#each sidequests as q (q.name)}
 				<a class="mission" href={q.href} use:hoverHold>
@@ -406,6 +531,7 @@
 			{/each}
 		</div>
 	</section>
+
 </main>
 
 <style>
@@ -418,6 +544,12 @@
 		--shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
 		background: var(--bg);
 		color: var(--text);
+		cursor: url('/cursors/hitbox.png') 16 16, crosshair;
+	}
+	:global(a),
+	:global(button),
+	:global(label) {
+		cursor: url('/cursors/hitbox-green.png') 16 16, pointer;
 	}
 	:global(body.dark) {
 		--bg: #131318;
@@ -443,7 +575,7 @@
 		position: relative;
 		min-height: 100vh;
 		box-sizing: border-box;
-		padding: 1.5rem 1.5rem 12rem;
+		padding: 1.5rem 1.5rem 4rem;
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
@@ -480,6 +612,10 @@
 		cursor: pointer;
 		font-family: inherit;
 	}
+	.toggle.active {
+		border-color: #39d353;
+		color: #39d353;
+	}
 	.toggle svg {
 		width: 20px;
 		height: 20px;
@@ -487,7 +623,6 @@
 	}
 
 	.layout {
-		flex: 1;
 		display: grid;
 		grid-template-columns: 1fr;
 		gap: 1rem;
@@ -628,7 +763,28 @@
 		justify-content: flex-start;
 		align-items: center;
 		gap: 0.75rem;
+		margin-bottom: 0.6rem;
+	}
+	.xp {
 		margin-bottom: 1rem;
+	}
+	.xp-track {
+		height: 12px;
+		border: var(--bw) solid var(--border);
+		background: rgba(0, 0, 0, 0.2);
+		overflow: hidden;
+	}
+	.xp-fill {
+		height: 100%;
+		background: #39d353;
+		transition: width 1.2s ease;
+	}
+	.xp-label {
+		display: block;
+		margin-top: 0.3rem;
+		font-size: 0.6rem;
+		letter-spacing: 0.1em;
+		opacity: 0.8;
 	}
 	.socials {
 		display: flex;
@@ -646,11 +802,21 @@
 		filter: brightness(0) invert(1);
 	}
 
-	.rule {
-		border: none;
-		border-top: 5px solid var(--border);
+	.section-head {
+		display: flex;
+		align-items: center;
+		gap: 1.25rem;
 		margin: 2.5rem 0;
-		width: 100%;
+	}
+	.section-head .line {
+		flex: 1;
+		height: 0;
+		border-top: 5px solid var(--border);
+	}
+	.section-head h2 {
+		margin: 0;
+		font-size: 0.95rem;
+		text-align: center;
 	}
 
 	/* missions */
@@ -709,6 +875,11 @@
 		border-color: #39d353;
 		color: #39d353;
 	}
+	/* The amber reads too light on the off-white background — darken it. */
+	:global(body:not(.dark)) .badge:not(.complete) {
+		border-color: #b5651d;
+		color: #b5651d;
+	}
 	.mission-name {
 		font-size: 0.95rem;
 	}
@@ -740,6 +911,10 @@
 		height: 44px;
 		border: var(--bw) solid var(--border);
 		background: var(--panel);
+		transition: border-color 0.15s ease;
+	}
+	.slot:hover {
+		border-color: #39d353;
 	}
 	.slot img {
 		width: 24px;
@@ -800,8 +975,12 @@
 		.stats-email {
 			word-break: break-all;
 		}
-		.rule {
+		.section-head {
 			margin: 1.75rem 0;
+			gap: 0.75rem;
+		}
+		.section-head h2 {
+			font-size: 0.85rem;
 		}
 		.mission-grid {
 			grid-template-columns: 1fr;
