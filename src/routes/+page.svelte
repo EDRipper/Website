@@ -443,7 +443,7 @@
 		position: relative;
 		min-height: 100vh;
 		box-sizing: border-box;
-		padding: 1.5rem;
+		padding: 1.5rem 1.5rem 12rem;
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
@@ -648,8 +648,8 @@
 
 	.rule {
 		border: none;
-		border-top: var(--bw) solid var(--border);
-		margin: 0.5rem 0;
+		border-top: 5px solid var(--border);
+		margin: 2.5rem 0;
 		width: 100%;
 	}
 
