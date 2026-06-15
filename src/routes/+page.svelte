@@ -1,336 +1,489 @@
 <script lang="ts">
-	import Project from '$lib/components/Project.svelte';
+	// "Customise your character" screen — character card, commit stats and missions.
 	import { onMount } from 'svelte';
 
-	const messages = [
-		'seen here at 2AM exhausted while staffing an Austrian hackathon',
-		'TODO: replace me',
-		'TODO: replace me',
-		'TODO: replace me'
-	];
-
-	const images = [
-		'/images/headshot.png',
-		'/images/replace-me-2.png',
-		'/images/replace-me-3.png',
-		'/images/replace-me-4.png'
-	];
-
-	const imageAlts = [
-		'Euan in a suit at an Austrian hackathon at 2AM',
-		'TODO: replace me',
-		'TODO: replace me',
-		'TODO: replace me'
-	];
-
-	let displayedText = $state('');
-	let messageIndex = $state(0);
-	let phase = $state<'typing' | 'pausing' | 'untyping'>('typing');
-	let scrolled = $state(false);
-
-	const TYPE_MS = 45;
-	const UNTYPE_MS = 25;
-	const PAUSE_AFTER_TYPE_MS = 4000;
-	const PAUSE_AFTER_UNTYPE_MS = 1500;
-
+	// Theme. Initialised from the OS preference on mount, then user-toggleable.
+	let dark = $state(false);
 	onMount(() => {
-		const onScroll = () => {
-			scrolled = window.scrollY > 24;
-		};
-		window.addEventListener('scroll', onScroll, { passive: true });
-		onScroll();
+		dark = window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+	});
+	$effect(() => {
+		document.body.classList.toggle('dark', dark);
+	});
 
-		let timer: ReturnType<typeof setTimeout>;
+	// Animated ordered-dither (Bayer) plasma, drawn faintly behind everything.
+	let bg!: HTMLCanvasElement;
+	onMount(() => {
+		const ctx = bg.getContext('2d')!;
+		const PIXEL = 4; // on-screen size of each dither cell
+		const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 
-		function tick() {
-			const message = messages[messageIndex];
-			if (phase === 'typing') {
-				if (displayedText.length < message.length) {
-					displayedText = message.slice(0, displayedText.length + 1);
-					timer = setTimeout(tick, TYPE_MS);
-				} else {
-					phase = 'pausing';
-					timer = setTimeout(tick, PAUSE_AFTER_TYPE_MS);
-				}
-			} else if (phase === 'pausing') {
-				phase = 'untyping';
-				timer = setTimeout(tick, UNTYPE_MS);
-			} else {
-				if (displayedText.length > 0) {
-					displayedText = displayedText.slice(0, -1);
-					timer = setTimeout(tick, UNTYPE_MS);
-				} else {
-					messageIndex = (messageIndex + 1) % messages.length;
-					phase = 'typing';
-					timer = setTimeout(tick, PAUSE_AFTER_UNTYPE_MS);
-				}
-			}
+		let cols = 0;
+		let rows = 0;
+		let img: ImageData;
+		let raf = 0;
+		const start = performance.now();
+
+		function resize() {
+			cols = Math.max(1, Math.ceil(window.innerWidth / PIXEL));
+			rows = Math.max(1, Math.ceil(window.innerHeight / PIXEL));
+			bg.width = cols;
+			bg.height = rows;
+			img = ctx.createImageData(cols, rows);
 		}
 
-		tick();
+		function frame(now: number) {
+			const t = (now - start) / 1000;
+			const data = img.data;
+			for (let y = 0; y < rows; y++) {
+				for (let x = 0; x < cols; x++) {
+					// Moving plasma field, summed sines -> normalised 0..1.
+					const s =
+						Math.sin(x * 0.025 + t * 0.4) +
+						Math.sin(y * 0.022 - t * 0.3) +
+						Math.sin((x + y) * 0.016 + t * 0.2);
+					const v = (s + 3) / 6;
+					const thr = (bayer[(y & 3) * 4 + (x & 3)] + 0.5) / 16;
+					// dark dots on light (light mode); inverted for dark mode
+					const on = v > thr !== dark ? 0 : 255;
+					const i = (y * cols + x) * 4;
+					data[i] = data[i + 1] = data[i + 2] = on;
+					data[i + 3] = 255;
+				}
+			}
+			ctx.putImageData(img, 0, 0);
+			raf = requestAnimationFrame(frame);
+		}
+
+		resize();
+		window.addEventListener('resize', resize);
+		raf = requestAnimationFrame(frame);
+
 		return () => {
-			clearTimeout(timer);
-			window.removeEventListener('scroll', onScroll);
+			cancelAnimationFrame(raf);
+			window.removeEventListener('resize', resize);
 		};
 	});
 
-	const stickerParagraph =
-		'I work on Hack Club Stickers with maxstellar and alice — a SvelteKit 2, Drizzle and Three.js rewrite of the site where teen hackers earn physical vinyl stickers by shipping projects. We added community voting on new designs, a public JSON catalog API, profiles, ordering, and a 3D viewer that makes the sticker drawer feel like a real-world shelf. Art comes from kat, with extra wiring from dani.';
+	const build = {
+		class: 'Euan Ripper',
+		title: 'Programmer, Builder, Outdoorsy Nerd'
+	};
 
-	const beestParagraph =
-		"I'm building Beest with the Hack Club community — a NestJS 11 + PostgreSQL backend and SvelteKit 2 / Svelte 5 frontend powering the You Ship We Ship hackathon in the Netherlands. Hackers sign in, ship projects, share feedback, and redeem prizes through an in-app shop, with OAuth, Hackatime time-tracking, leaderboards, and admin tools wired into a clean API/UI monorepo.";
+	// Character level = full years since 26 Nov 2006.
+	function yearsSince(year: number, month: number, day: number): number {
+		const now = new Date();
+		let y = now.getFullYear() - year;
+		const m = now.getMonth() - (month - 1);
+		if (m < 0 || (m === 0 && now.getDate() < day)) y--;
+		return y;
+	}
+	const level = yearsSince(2006, 11, 26);
+
+	type Mission = {
+		name: string;
+		status: 'COMPLETE' | 'ACTIVE' | 'OPEN';
+		brief: string;
+		href?: string;
+	};
+
+	const missions: Mission[] = [
+		{
+			name: 'Hack Club Fellowship',
+			status: 'ACTIVE',
+			brief:
+				'Move across the world at 18 to spend a year scaling the mission of Hack Club — building programs and running events that inspire thousands of teens to learn coding.',
+			href: '/blog/hack-club-fellowship'
+		},
+		{
+			name: 'StrandBeest',
+			status: 'COMPLETE',
+			brief:
+				'Design, manufacture and build a mechanical walking sculpture, and meet the inspiration Theo Jansen.',
+			href: '/blog/strandbeest'
+		},
+		{
+			name: 'Beest Hackathon',
+			status: 'COMPLETE',
+			brief:
+				'Convince 30 teens to fly to the Netherlands to watch the StrandBeest exhibition.',
+			href: '/blog/beest-hackathon'
+		},
+		{
+			name: 'You Ship, We Ship',
+			status: 'ACTIVE',
+			brief:
+				'Create and execute programs that reward teens for building personal projects. Goal: 10,000 hours of tracked learning.',
+			href: '/blog/you-ship-we-ship'
+		},
+		{
+			name: 'Flagship Hackathon',
+			status: 'ACTIVE',
+			brief:
+				'Get 10 of the biggest technical YouTubers together for a game jam in LA.',
+			href: '/blog/flagship-hackathon'
+		},
+		{
+			name: 'Stickers',
+			status: 'COMPLETE',
+			brief:
+				'Build a platform to track historical sticker designs by Hack Club — starting as an internal tool and becoming a platform used by thousands to distribute designs.',
+			href: '/blog/stickers'
+		},
+		{
+			name: 'New Mission',
+			status: 'OPEN',
+			brief: 'Want to work on another mission with me? Reach out with your pitch!',
+			href: '/contact'
+		}
+	];
 </script>
 
-<section class="hero">
-	<div class="text">
-		<h1>THIS IS EUAN!</h1>
-		<p class="typewriter">{displayedText}<span class="caret">|</span></p>
-	</div>
-	<div class="photo">
-		<img src={images[messageIndex]} alt={imageAlts[messageIndex]} />
-	</div>
-	<ul class="contacts">
-		<li class="contact-github"><a href="https://github.com/edRipper">github</a></li>
-		<li class="contact-linkedin">
-			<a href="https://www.linkedin.com/in/euan-ripper-ab876528b/">linkedin</a>
-		</li>
-		<li class="contact-instagram"><a href="https://www.instagram.com/euanripper/">instagram</a></li>
-	</ul>
-	<div class="scroll-indicator" class:hidden={scrolled} aria-hidden="true">
-		<span>scroll</span>
-		<span class="arrow">↓</span>
-	</div>
-</section>
+<svelte:head>
+	<title>Euan Ripper — Character Select</title>
+</svelte:head>
 
-<section class="intro">
-	<p>
-		I'm a software engineer building open-source tools for <a href="https://hackclub.com">Hack Club</a>,
-		a global community of teenage hackers. Most of my work sits between hackathon logistics, community
-		tooling, and shipping things that look like they were printed in a basement. Below are two of the
-		projects I've helped ship — the people I work with are the best part.
-	</p>
-</section>
+<canvas class="bg" bind:this={bg} aria-hidden="true"></canvas>
 
-<Project
-	heading="STICKERS"
-	paragraph={stickerParagraph}
-	linkPhrase="Hack Club Stickers"
-	linkHref="https://github.com/hackclub/stickers"
-	imageSrc="/images/sticker.png"
-	imageAlt="Hack Club sticker"
-	imageHref="https://stickers.hackclub.com"
-	side="left"
-	radiusBoost={1.4}
-	rotation={30}
-	rock
-	size="clamp(180px, 22vw, 280px)"
-	techs={[
-		{ slug: 'svelte', label: 'SvelteKit 2' },
-		{ slug: 'drizzle', color: '4a8b1c', label: 'Drizzle ORM' },
-		{ slug: 'threedotjs', label: 'Three.js' }
-	]}
-/>
+<main class="screen">
+	<header class="topbar">
+		<h1>Selected Character: Euan Shipper</h1>
+		<button
+			class="theme-toggle"
+			onclick={() => (dark = !dark)}
+			aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+		>
+			{#if dark}
+				<!-- sun -->
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<circle cx="12" cy="12" r="5" />
+					<line x1="12" y1="1" x2="12" y2="3" />
+					<line x1="12" y1="21" x2="12" y2="23" />
+					<line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+					<line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+					<line x1="1" y1="12" x2="3" y2="12" />
+					<line x1="21" y1="12" x2="23" y2="12" />
+					<line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+					<line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+				</svg>
+			{:else}
+				<!-- moon -->
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+				</svg>
+			{/if}
+		</button>
+	</header>
 
-<Project
-	heading="BEEST"
-	paragraph={beestParagraph}
-	linkPhrase="Beest"
-	linkHref="https://github.com/hackclub/beest"
-	imageSrc="/images/beest.png"
-	imageAlt="Beest logo"
-	imageHref="https://beest.hackclub.com"
-	side="right"
-	rotation={-4}
-	techs={[
-		{ slug: 'nestjs', label: 'NestJS 11' },
-		{ slug: 'postgresql', label: 'PostgreSQL' },
-		{ slug: 'svelte', label: 'SvelteKit 2 / Svelte 5' }
-	]}
-/>
+	<div class="layout">
+		<!-- ── Character model (placeholder) ── -->
+		<section class="panel stage">
+			<div class="stage-half model-half">
+				<div class="class-tag">
+					<div>
+						<h2>{build.class}</h2>
+						<p>{build.title}</p>
+					</div>
+					<div class="socials">
+						<a href="https://github.com/edRipper" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
+							<img class="mono" src="https://cdn.simpleicons.org/github" alt="GitHub" />
+						</a>
+						<a href="https://www.linkedin.com/in/euan-ripper-ab876528b/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
+							<img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg" alt="LinkedIn" />
+						</a>
+						<a href="https://www.instagram.com/euanripper/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+							<img class="mono" src="https://cdn.simpleicons.org/instagram" alt="Instagram" />
+						</a>
+					</div>
+				</div>
+				<div class="model">[ MODEL PLACEHOLDER ]</div>
+			</div>
+
+			<div class="stage-half stats-half">
+				<h3 class="sub">STATS</h3>
+				<div class="stat-row">
+					<span class="lvl-badge">LV {level}</span>
+					<span class="location">LOCATION: VERMONT</span>
+				</div>
+				<a class="chart" href="https://github.com/edRipper" target="_blank" rel="noopener noreferrer">
+					<img
+						src="https://ghchart.rshah.org/39d353/edRipper"
+						alt="GitHub commit history for edRipper"
+						loading="lazy"
+					/>
+				</a>
+				<p class="bio">
+					Started programming at 16 to automate his very boring warehouse job, and got hooked
+					on the intersection of maths and art — using code as a tool to explore it. He
+					quickly realised that no community of makers existed in his area of rural England,
+					so he started one. He taught a class, won a competition and was offered a $50,000
+					fellowship with Hack Club. At 18, he moved to America to build the future of
+					technical education for teens.
+				</p>
+			</div>
+		</section>
+
+	</div>
+
+	<!-- ── Missions (projects) ── -->
+	<section class="panel missions">
+		<h2>MISSIONS</h2>
+		<div class="mission-grid">
+			{#each missions as m (m.name)}
+				{@const external = m.href?.startsWith('http')}
+				<svelte:element
+					this={m.href ? 'a' : 'div'}
+					class="mission"
+					class:open={m.status === 'OPEN'}
+					href={m.href}
+					target={external ? '_blank' : undefined}
+					rel={external ? 'noopener noreferrer' : undefined}
+				>
+					<div class="mission-head">
+						<span class="mission-name">{m.name}</span>
+						<span class="mission-status">{m.status}</span>
+					</div>
+					<p class="mission-brief">{m.brief}</p>
+				</svelte:element>
+			{/each}
+		</div>
+	</section>
+</main>
 
 <style>
-	.hero {
-		display: flex;
-		align-items: center;
-		justify-content: flex-start;
-		gap: 2.5rem;
-		max-width: 1100px;
-		margin: 0 auto;
-		padding: 4rem 2rem;
+	:global(body) {
+		--bg: #f0ede4;
+		--panel: rgba(248, 245, 238, 0.85);
+		--border: #cccccc;
+		--text: #1a1814;
+		background: var(--bg);
+		color: var(--text);
+	}
+	:global(body.dark) {
+		--bg: #0d0d0f;
+		--panel: #16161a;
+		--border: #3a3a40;
+		--text: #ece7da;
+	}
+
+	.bg {
+		position: fixed;
+		inset: 0;
+		width: 100vw;
+		height: 100vh;
+		display: block;
+		image-rendering: pixelated;
+		opacity: 0.08;
+		pointer-events: none;
+		z-index: -1;
+	}
+
+	.screen {
+		position: relative;
 		min-height: 100vh;
 		box-sizing: border-box;
-		position: relative;
-	}
-
-	.scroll-indicator {
-		position: absolute;
-		bottom: 1.5rem;
-		left: 50%;
-		transform: translateX(-50%);
+		padding: 1.5rem;
 		display: flex;
 		flex-direction: column;
+		gap: 1rem;
+		font-family: 'Departure Mono', ui-monospace, monospace;
+	}
+
+	.topbar {
+		display: flex;
+		justify-content: space-between;
 		align-items: center;
-		gap: 0.15rem;
-		font-family: 'Terminal Grotesque', monospace;
-		font-size: 0.95rem;
-		opacity: 0.65;
-		letter-spacing: 0.1em;
-		transition: opacity 0.35s ease;
-		pointer-events: none;
+		gap: 1rem;
+		padding-bottom: 0.5rem;
 	}
-
-	.scroll-indicator.hidden {
-		opacity: 0;
-	}
-
-	.scroll-indicator .arrow {
-		font-size: 1.4rem;
-		line-height: 1;
-		animation: scroll-bounce 1.8s ease-in-out infinite;
-	}
-
-	@keyframes scroll-bounce {
-		0%,
-		100% {
-			transform: translateY(0);
-		}
-		50% {
-			transform: translateY(6px);
-		}
-	}
-
-	.text {
-		flex: 0 1 auto;
-		display: grid;
-		grid-template-columns: min-content;
-	}
-
-	.text h1 {
-		font-family: 'Goozette', monospace;
-		font-size: clamp(1.25rem, 6vw, 4.5rem);
-		line-height: 1;
-		margin: 0 0 0.5rem;
-		letter-spacing: 0.02em;
-		word-spacing: 0.2em;
-		white-space: nowrap;
-	}
-
-	.text p {
-		font-family: 'Terminal Grotesque', monospace;
-		font-size: clamp(1.25rem, 3vw, 2.5rem);
-		line-height: 1.2;
+	.topbar h1 {
 		margin: 0;
-		min-height: 2.4em;
-		max-width: 100%;
-		word-wrap: break-word;
+		font-size: 1.4rem;
 	}
-
-	.caret {
-		display: inline-block;
-		margin-left: 0.05em;
-		animation: blink 1s steps(2, start) infinite;
-	}
-
-	@keyframes blink {
-		to {
-			visibility: hidden;
-		}
-	}
-
-	.photo {
+	.theme-toggle {
 		flex-shrink: 0;
+		display: grid;
+		place-items: center;
+		width: 38px;
+		height: 38px;
+		padding: 0;
+		border: 1px solid var(--border);
+		background: var(--panel);
+		color: inherit;
+		cursor: pointer;
+	}
+	.theme-toggle svg {
+		width: 20px;
+		height: 20px;
+		display: block;
 	}
 
-	.contacts {
-		list-style: none;
-		padding: 0;
-		margin: 0 calc(50% - 50vw - 1.25rem) 0 auto;
+	.layout {
+		flex: 1;
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 1rem;
+	}
+
+	.panel {
+		border: 1px solid var(--border);
+		padding: 1rem;
 		display: flex;
 		flex-direction: column;
-		align-items: flex-end;
-		gap: 0.6rem;
-		font-family: 'Terminal Grotesque', monospace;
-		font-size: clamp(1.25rem, 2.2vw, 2.25rem);
-		text-align: right;
+		background: var(--panel);
+	}
+	.panel h2 {
+		margin: 0 0 1rem;
+		font-size: 0.9rem;
+	}
+	.sub {
+		margin: 0 0 0.6rem;
+		font-size: 0.75rem;
+		letter-spacing: 0.1em;
+		border-bottom: 1px solid var(--border);
+		padding-bottom: 0.3rem;
 	}
 
-	.contacts li {
-		border: 2px solid #1a1814;
-		padding: 0.35rem 3rem 0.35rem 1.25rem;
-		background: rgba(255, 250, 235, 0.55);
-	}
-
-	.contacts a {
-		color: inherit;
-		text-decoration: none;
-		transition: color 0.25s ease;
-	}
-
-	.contact-github {
-		border-color: #6e5494;
-	}
-
-	.contact-github a {
-		color: #6e5494;
-	}
-
-	.contact-linkedin {
-		border-color: #0a66c2;
-	}
-
-	.contact-linkedin a {
-		color: #0a66c2;
-	}
-
-	.contact-instagram {
-		border-color: #d62976;
-	}
-
-	.contact-instagram a {
-		background: linear-gradient(45deg, #feda75, #fa7e1e, #d62976, #962fbf, #4f5bd5);
-		-webkit-background-clip: text;
-		background-clip: text;
-		color: transparent;
-	}
-
-	.photo img {
-		display: block;
-		width: clamp(90px, 20vw, 240px);
-		height: auto;
+	/* stage */
+	.stage {
+		flex-direction: row;
+		gap: 0;
 		padding: 0;
-		background: #fff;
-		box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18), 0 6px 10px rgba(0, 0, 0, 0.12);
-		transform: rotate(4deg);
 	}
-
-	.intro {
-		max-width: 1100px;
-		margin: 0 auto;
-		padding: 2rem 2rem 4rem;
+	.stage-half {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		padding: 1rem;
 	}
-
-	.intro p {
-		font-family: 'Terminal Grotesque', monospace;
-		font-size: clamp(1.1rem, 2vw, 1.75rem);
-		line-height: 1.45;
+	.model-half {
+		border-right: 1px solid var(--border);
+	}
+	.class-tag {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+	}
+	.class-tag h2 {
 		margin: 0;
-		max-width: 56ch;
+	}
+	.class-tag p {
+		margin: 0;
+		font-size: 0.7rem;
+	}
+	.lvl-badge {
+		border: 1px solid var(--border);
+		padding: 0.25rem 0.5rem;
+		font-size: 0.8rem;
+	}
+	.model {
+		flex: 1;
+		display: grid;
+		place-items: center;
+		border: 1px dashed var(--border);
+		margin: 1rem 0;
+		min-height: 240px;
+		font-size: 0.8rem;
+	}
+	.location {
+		font-size: 0.7rem;
+		letter-spacing: 0.1em;
+	}
+	.stat-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1rem;
+	}
+	.socials {
+		display: flex;
+		gap: 0.75rem;
+		margin-left: auto;
+	}
+	.socials img {
+		width: 22px;
+		height: 22px;
+		display: block;
+	}
+	/* Force these brand marks to pure white on dark (brightness(0) flattens any
+	   colour to black, invert(1) then makes it white) so none come out tinted. */
+	:global(body.dark) .mono {
+		filter: brightness(0) invert(1);
 	}
 
-	.intro a {
+	/* missions */
+	.missions {
+		margin-top: 1.5rem;
+	}
+	.mission-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+		gap: 0.75rem;
+	}
+	.mission {
+		border: 1px solid var(--border);
+		padding: 0.75rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		text-decoration: none;
 		color: inherit;
-		text-decoration: underline;
-		text-underline-offset: 0.15em;
+	}
+	.mission.open {
+		border-style: dashed;
+	}
+	.mission-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+	}
+	.mission-name {
+		font-size: 0.95rem;
+	}
+	.mission-status {
+		font-size: 0.6rem;
+		border: 1px solid var(--border);
+		padding: 0.15rem 0.35rem;
+	}
+	.mission-brief {
+		margin: 0;
+		font-size: 0.8rem;
+		line-height: 1.4;
+	}
+	/* activity log */
+	.bio {
+		margin: 1rem 0 0;
+		font-size: 0.85rem;
+		line-height: 1.55;
+	}
+	.chart {
+		display: block;
+		background: #fff;
+		padding: 6px;
+		border: 1px solid var(--border);
+	}
+	.chart img {
+		width: 100%;
+		height: auto;
+		display: block;
+	}
+	/* In dark mode, invert just the image so its white/grey ground turns dark,
+	   then rotate the hue 180° to bring the green squares (and labels) back.
+	   Border/background live on the wrapper so they aren't inverted. */
+	:global(body.dark) .chart {
+		background: transparent;
+	}
+	:global(body.dark) .chart img {
+		filter: invert(1) hue-rotate(180deg);
 	}
 
-	@media (max-width: 700px) {
-		.hero {
-			gap: 1rem;
-			padding: 2rem 1rem;
+	@media (max-width: 940px) {
+		.layout {
+			grid-template-columns: 1fr;
 		}
-
-		.intro {
-			padding: 1rem 1rem 2rem;
+		.stage {
+			order: -1;
 		}
 	}
 </style>

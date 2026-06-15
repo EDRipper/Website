@@ -12,6 +12,9 @@ node_modules
 .DS_Store
 Thumbs.db
 
+# Logs
+*.log
+
 # Env
 .env
 .env.*
