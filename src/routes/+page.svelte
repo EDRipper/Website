@@ -776,4 +776,35 @@
 			order: -1;
 		}
 	}
+
+	@media (max-width: 700px) {
+		.screen {
+			padding: 1rem 1rem 7rem;
+		}
+		.topbar h1 {
+			font-size: 1.1rem;
+		}
+		/* Stack the model and stats instead of cramming them side by side. */
+		.stage {
+			flex-direction: column;
+		}
+		.model-half {
+			border-right: none;
+			border-bottom: var(--bw) solid var(--border);
+		}
+		/* Let the long heading + email wrap instead of overflowing. */
+		.stats-head {
+			flex-wrap: wrap;
+			gap: 0.25rem 0.75rem;
+		}
+		.stats-email {
+			word-break: break-all;
+		}
+		.rule {
+			margin: 1.75rem 0;
+		}
+		.mission-grid {
+			grid-template-columns: 1fr;
+		}
+	}
 </style>
