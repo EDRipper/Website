@@ -124,7 +124,7 @@
 	const missions: Mission[] = [
 		{
 			name: 'Hack Club Fellowship',
-			status: 'IN PROGRESS',
+			status: 'COMPLETE',
 			brief:
 				'Move across the world at 18 to spend a year scaling the mission of Hack Club — building programs and running events that inspire thousands of teens to learn coding.',
 			href: '/blog/hack-club-fellowship',
@@ -166,7 +166,7 @@
 			name: 'Stickers',
 			status: 'IN PROGRESS',
 			brief:
-				'Build a platform to track historical sticker designs by Hack Club — starting as an internal tool and becoming a platform used by thousands to distribute designs.',
+				'Build a platform to track historical sticker designs by Hack Club — starting as an internal tool and becoming a full-fledged distribution platform.',
 			href: '/blog/stickers',
 			image: '/images/sticker.png',
 			contain: true
