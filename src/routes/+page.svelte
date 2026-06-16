@@ -1,6 +1,89 @@
 <script lang="ts">
 	// "Customise your character" screen — character card, commit stats and missions.
 	import { onMount } from 'svelte';
+	import { portraitCols, portraitRows, portraitChars, portraitColors } from '$lib/portrait-ascii';
+	import { iceCols, iceRows, iceChars, iceColors } from '$lib/ice-ascii';
+
+	// Decode a base64 RGB blob (one per portrait) to bytes, lazily.
+	function decodeRGB(b64: string): Uint8Array {
+		const bin = atob(b64);
+		const buf = new Uint8Array(bin.length);
+		for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+		return buf;
+	}
+	let euanRGB: Uint8Array | null = null;
+	let iceRGB: Uint8Array | null = null;
+
+	// A big 5-point ASCII star, scattered around the light-mode portrait.
+	const STAR = `       *
+      ***
+     *****
+    *******
+***************
+ *************
+  ***********
+   ***   ***
+  ***     ***
+ ***       ***
+**           **`;
+
+	// Paint the ASCII portrait onto a canvas. Dark mode: the colour selfie on a
+	// near-black ground (each cell a dimmed fill + brighter glyph). Light mode: the
+	// ice-rink selfie with its background cut out, drawn as darker ink on the light
+	// panel (transparent, no fill) so it reads like a print. CSS scales it to fit.
+	const FONT = 12;
+	const CW = FONT * 0.6; // monospace advance
+	const LH = FONT; // line height
+	let asciiCanvas = $state<HTMLCanvasElement | null>(null);
+	function drawAscii() {
+		const cv = asciiCanvas;
+		if (!cv) return;
+		const ctx = cv.getContext('2d');
+		if (!ctx) return;
+		const light = !dark;
+		const cols = light ? iceCols : portraitCols;
+		const rows = light ? iceRows : portraitRows;
+		const chars = light ? iceChars : portraitChars;
+		const rgb = light
+			? (iceRGB ??= decodeRGB(iceColors))
+			: (euanRGB ??= decodeRGB(portraitColors));
+		cv.width = cols * CW;
+		cv.height = rows * LH;
+		if (light) {
+			ctx.clearRect(0, 0, cv.width, cv.height); // transparent → light panel shows
+		} else {
+			ctx.fillStyle = '#070608';
+			ctx.fillRect(0, 0, cv.width, cv.height);
+		}
+		ctx.font = `${FONT}px 'Departure Mono', ui-monospace, monospace`;
+		ctx.textBaseline = 'top';
+		const INK = light ? 0.6 : 1; // darken the print so it carries on the light ground
+		const BG = 0.5;
+		let p = 0;
+		for (let ry = 0; ry < rows; ry++) {
+			// +ry skips the row's trailing newline in the flat chars string.
+			const base = ry * (cols + 1);
+			for (let rx = 0; rx < cols; rx++, p++) {
+				const ch = chars[base + rx];
+				const r = rgb[p * 3], g = rgb[p * 3 + 1], b = rgb[p * 3 + 2];
+				if (light) {
+					if (ch === ' ') continue;
+					ctx.fillStyle = `rgb(${(r * INK) | 0},${(g * INK) | 0},${(b * INK) | 0})`;
+					ctx.fillText(ch, rx * CW, ry * LH);
+				} else {
+					ctx.fillStyle = `rgb(${r * BG},${g * BG},${b * BG})`;
+					ctx.fillRect(rx * CW, ry * LH, CW + 1, LH + 1);
+					if (ch === ' ') continue;
+					ctx.fillStyle = `rgb(${r},${g},${b})`;
+					ctx.fillText(ch, rx * CW, ry * LH);
+				}
+			}
+		}
+	}
+	$effect(() => {
+		dark; // redraw when the theme flips
+		if (asciiCanvas) drawAscii();
+	});
 
 	// Theme. Initialised from the OS preference on mount, then user-toggleable.
 	let dark = $state(true);
@@ -34,15 +117,25 @@
 		osc.start(t);
 		osc.stop(t + dur);
 	}
+	// Shared level so the menu SFX sit at the same loudness as the music.
+	const AUDIO_VOL = 0.25;
 	// Cursor-move tick on hover; two-note "confirm" rise on select.
-	const moveSound = () => soundOn && voice(740, 0.03, 0.035);
+	const moveSound = () => soundOn && voice(740, 0.03, AUDIO_VOL);
 	const selectSound = () => {
 		if (!soundOn) return;
-		voice(660, 0.06, 0.05);
-		voice(990, 0.08, 0.05, 'square', 0.055);
+		voice(660, 0.06, AUDIO_VOL);
+		voice(990, 0.08, AUDIO_VOL, 'square', 0.055);
 	};
 
-	// Background music: track dropped for now; toggle kept for when one returns.
+	// Background music: Kubbi — Spirit Dancer (credit at the foot of the page).
+	let musicEl: HTMLAudioElement | null = null;
+	$effect(() => {
+		const el = musicEl;
+		if (!el) return;
+		el.volume = AUDIO_VOL;
+		if (musicOn) el.play().catch(() => (musicOn = false));
+		else el.pause();
+	});
 
 	onMount(() => {
 		const sel = 'a, button, .mission, .slot';
@@ -143,9 +236,43 @@
 		{ name: 'Python', src: '/images/python.svg' },
 		{ name: 'JavaScript', slug: 'javascript' },
 		{ name: 'Metabase', slug: 'metabase' },
-		{ name: 'NestJS', slug: 'nestjs' }
+		{ name: 'NestJS', slug: 'nestjs' },
+		{ name: 'Fusion 360', src: '/images/fusion360.svg' }
 	];
 
+	// ── Personality recommendations ──────────────────────────────────────────
+	// Top 3 songs (linked to a Spotify search); visitors can suggest one back.
+	const songs = [
+		{ title: 'Creature', artist: 'half·alive' },
+		{ title: 'Nobody', artist: 'Hozier' },
+		{ title: 'Ankles', artist: 'Lucy Dacus' }
+	];
+	const songSearch = (s: { title: string; artist: string }) =>
+		`https://open.spotify.com/search/${encodeURIComponent(`${s.title} ${s.artist}`)}`;
+	// Visitors can suggest a song; it's POSTed to /api/suggest → Neon Postgres.
+	let suggestSong = $state('');
+	let suggestName = $state('');
+	let suggestHoney = $state(''); // honeypot — bots fill it, humans don't
+	let suggestState = $state<'idle' | 'sending' | 'done' | 'error'>('idle');
+	async function submitSuggestion(e: SubmitEvent) {
+		e.preventDefault();
+		const song = suggestSong.trim();
+		if (!song || suggestState === 'sending') return;
+		suggestState = 'sending';
+		try {
+			const res = await fetch('/api/suggest', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ song, name: suggestName.trim(), website: suggestHoney })
+			});
+			if (!res.ok) throw new Error();
+			suggestState = 'done';
+			suggestSong = '';
+			suggestName = '';
+		} catch {
+			suggestState = 'error';
+		}
+	}
 	// Adds `.hovering` on pointer enter and removes it `delay` ms after leave, so
 	// the reveal always completes (never reverses mid-way) and lingers on exit.
 	function hoverHold(node: HTMLElement, delay = 1000) {
@@ -190,6 +317,110 @@
 	let xp = $state(0);
 	onMount(() => {
 		xp = agePct;
+	});
+	// Terminal-style block gauge: fixed run of cells, filled in left-to-right.
+	const XP_CELLS = 60;
+	const xpFilled = $derived(Math.round((xp / 100) * XP_CELLS));
+
+	// Right-hand character panel is split into tabs.
+	const statTabs = [
+		{ id: 'stats', label: 'STATS' },
+		{ id: 'story', label: 'STORY' },
+		{ id: 'personality', label: 'PERSONALITY' }
+	] as const;
+	let statTab = $state<(typeof statTabs)[number]['id']>('stats');
+
+	// Story paragraphs, rendered with animated plane dividers between them.
+	const storyParas = [
+		`Started programming at 16 to automate his very boring warehouse job, and got hooked on the intersection of maths and art — using code as a tool to explore it. He quickly realised that no community of makers existed in his area of rural England, so he started one. He taught a class, won a competition and was offered a $50,000 fellowship with Hack Club. At 18, he moved to America to build the future of technical education for teens.`,
+		`Over that year in America he ran hackathons with the creators that first showed him coding, travelled all across America and Europe to mentor at events, and got teens to program for 10,000 hours — tracked using Hackatime.`,
+		`Soon though, Euan will fly the other way. Home to England to study Mechatronics and Robotics Engineering at Loughborough. We are yet to see where that will go...`
+	];
+	// Both divider planes cross at the same pace — the reading time of the first
+	// (top) paragraph at an average adult reading speed.
+	const STORY_WPM = 230;
+	const readMs = (text: string) => (text.trim().split(/\s+/).length / STORY_WPM) * 60000;
+
+	// ── Hackatime coding stats ───────────────────────────────────────────────
+	// Public stats lookup must be enabled in Hackatime (Settings → My Settings →
+	// Privacy). The public endpoint only exposes language/project breakdowns —
+	// editor/OS would need an authenticated key, so "loadout" uses top language
+	// + top project (no secret shipped to the browser).
+	const HACKATIME_USER = 'U098SB3609L';
+	// Slice colours for the language pie (last is grey for the "Other" bucket).
+	const LANG_COLORS = ['var(--accent)', '#4dd2ff', '#e6b23e', '#ff6b9d', '#b48cff', '#8f8a7e'];
+
+	// Hackatime project names come from local folder names, so they don't always
+	// match a GitHub repo. Most are work projects in the hackclub org, so default
+	// to github.com/hackclub/<name>; add overrides here for the exceptions.
+	const PROJECT_OWNER = 'hackclub';
+	const PROJECT_LINKS: Record<string, string> = {
+		// 'hackatime-project-name': 'https://github.com/owner/repo'
+		stickersV2: 'https://github.com/hackclub/stickers',
+		stickers: 'https://github.com/hackclub/stickersv1'
+	};
+	const projectLink = (name: string) =>
+		PROJECT_LINKS[name] ?? `https://github.com/${PROJECT_OWNER}/${encodeURIComponent(name)}`;
+
+	type Lang = { name: string; percent: number; color: string };
+	type Proj = { name: string; text: string; href: string };
+	type CodingStats = { total: string; streak: number; langs: Lang[]; projects: Proj[] };
+	let coding = $state<CodingStats | null>(null);
+	let codingErr = $state<string | null>(null); // visible diagnostic if the fetch fails
+
+	// Build the conic-gradient for the pie from cumulative language percentages.
+	function pieGradient(langs: Lang[]): string {
+		let acc = 0;
+		const stops = langs.map((l) => {
+			const start = acc;
+			acc += l.percent;
+			return `${l.color} ${start}% ${acc}%`;
+		});
+		return `conic-gradient(${stops.join(', ')})`;
+	}
+
+	onMount(async () => {
+		const url = `https://hackatime.hackclub.com/api/v1/users/${HACKATIME_USER}/stats?features=languages,projects`;
+		// Retry a couple of times so a transient blip (5xx/network) doesn't leave
+		// the panel permanently blank until the next reload.
+		for (let attempt = 1; attempt <= 3; attempt++) {
+			try {
+				const res = await fetch(url, { cache: 'no-store' });
+				if (!res.ok) {
+					console.warn(`[hackatime] HTTP ${res.status} (attempt ${attempt})`);
+					codingErr = `HTTP ${res.status}`;
+					if (res.status >= 500 || res.status === 429) continue; // transient — retry
+					return; // 4xx (e.g. public stats disabled) — give up quietly
+				}
+				const { data } = await res.json();
+				// Top 5 *named* languages get their own slice; the tail plus the API's
+				// own "Other" bucket roll into a single "Other" (avoids a duplicate key).
+				const raw = (data.languages ?? []) as { name: string; percent: number }[];
+				const named = raw.filter((l) => l.name && l.name.toLowerCase() !== 'other');
+				const langs = named
+					.slice(0, 5)
+					.map((l, i) => ({ name: l.name, percent: l.percent, color: LANG_COLORS[i] }));
+				const kept = new Set(langs.map((l) => l.name));
+				const restPct = raw
+					.filter((l) => !kept.has(l.name))
+					.reduce((s, l) => s + (l.percent || 0), 0);
+				if (restPct > 0.5) langs.push({ name: 'Other', percent: restPct, color: LANG_COLORS[5] });
+				const projects = ((data.projects ?? []) as { name: string; text: string }[])
+					.slice(0, 5)
+					.map((p) => ({ name: p.name, text: p.text, href: projectLink(p.name) }));
+				coding = {
+					total: data.human_readable_total ?? '—',
+					streak: data.streak ?? 0,
+					langs,
+					projects
+				};
+				codingErr = null;
+				return; // success
+			} catch (err) {
+				console.warn(`[hackatime] fetch failed (attempt ${attempt}):`, err);
+				codingErr = err instanceof Error ? `${err.name}: ${err.message}` : 'fetch failed';
+			}
+		}
 	});
 
 	type Status = 'COMPLETE' | 'IN PROGRESS';
@@ -333,14 +564,26 @@
 			aria-pressed={musicOn}
 			title={musicOn ? 'Stop music' : 'Play music'}
 		>
-			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<path d="M9 18V5l12-2v13" />
-				<circle cx="6" cy="18" r="3" />
-				<circle cx="18" cy="16" r="3" />
-			</svg>
+			{#if musicOn}
+				<!-- music playing -->
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M9 18V5l12-2v13" />
+					<circle cx="6" cy="18" r="3" />
+					<circle cx="18" cy="16" r="3" />
+				</svg>
+			{:else}
+				<!-- music off (slashed note) -->
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M9 18V5l12-2v13" />
+					<circle cx="6" cy="18" r="3" />
+					<circle cx="18" cy="16" r="3" />
+					<line x1="3" y1="3" x2="21" y2="21" />
+				</svg>
+			{/if}
 		</button>
 		<button
 			class="toggle"
+			class:active={soundOn}
 			onclick={() => (soundOn = !soundOn)}
 			aria-label={soundOn ? 'Mute sound effects' : 'Unmute sound effects'}
 			aria-pressed={soundOn}
@@ -411,59 +654,204 @@
 						</a>
 					</div>
 				</div>
-				<div class="model">
-					<img class="model-img" src="/images/euan.jpg" alt="Euan Ripper" />
+				<div class="model" class:light={!dark}>
+					{#if !dark}
+						<pre class="star star-a" aria-hidden="true">{STAR}</pre>
+						<pre class="star star-b" aria-hidden="true">{STAR}</pre>
+						<pre class="star star-c" aria-hidden="true">{STAR}</pre>
+					{/if}
+					<canvas
+						class="model-ascii"
+						bind:this={asciiCanvas}
+						aria-label="ASCII portrait of Euan Ripper"
+					></canvas>
 					<span class="photo-credit">photo credit: reem &lt;3</span>
 				</div>
 			</div>
 
 			<div class="stage-half stats-half">
-				<h3 class="sub stats-head">
-					<span>ATTRIBUTES</span>
+				<div class="sub tabs-head">
+					<div class="tabs" role="tablist" aria-label="Character details">
+						{#each statTabs as t (t.id)}
+							<button
+								class="tab"
+								class:active={statTab === t.id}
+								role="tab"
+								aria-selected={statTab === t.id}
+								onclick={() => (statTab = t.id)}
+							>
+								{t.label}
+							</button>
+						{/each}
+					</div>
 					<a class="stats-email" href="mailto:euanripper2@gmail.com">euanripper2@gmail.com</a>
-				</h3>
-				<div class="stat-row">
-					<span class="lvl-badge">Level {level}</span>
-					<span class="location">LOCATION: VERMONT</span>
 				</div>
-				<div class="xp">
-					<div class="xp-track"><div class="xp-fill" style="width: {xp}%"></div></div>
-					<span class="xp-label">{agePct}% through Level {level} → {level + 1}</span>
-				</div>
-				<p class="likes">LIKES: circus arts, robotics, web dev, hackathons</p>
 
-				<h3 class="sub">STATS</h3>
-				<a class="chart" href="https://github.com/edRipper" target="_blank" rel="noopener noreferrer">
-					<img
-						src="https://ghchart.rshah.org/39d353/edRipper"
-						alt="GitHub commit history for edRipper"
-						loading="lazy"
-					/>
-				</a>
+				<div class="tab-panel" role="tabpanel">
+					{#if statTab === 'stats'}
+						<div class="stat-row">
+							<span class="lvl-badge">Level {level}</span>
+							<div
+								class="xp-bar"
+								role="progressbar"
+								aria-valuenow={agePct}
+								aria-valuemin="0"
+								aria-valuemax="100"
+							>
+								<span class="xp-brk">[</span><!--
+								-->{#each { length: XP_CELLS } as _, i}<span
+										class="xp-cell"
+										class:on={i < xpFilled}>{i < xpFilled ? '█' : '░'}</span
+									>{/each}<!--
+								--><span class="xp-brk">]</span>
+							</div>
+							<span class="location">LOCATION: VERMONT</span>
+						</div>
+						<div class="xp">
+							<span class="xp-label">{agePct}% through Level {level} → {level + 1}</span>
+						</div>
 
-				<h3 class="sub">STORY</h3>
-				<p class="bio">
-					Started programming at 16 to automate his very boring warehouse job, and got hooked
-					on the intersection of maths and art — using code as a tool to explore it. He
-					quickly realised that no community of makers existed in his area of rural England,
-					so he started one. He taught a class, won a competition and was offered a $50,000
-					fellowship with Hack Club. At 18, he moved to America to build the future of
-					technical education for teens.
-				</p>
+						{#if coding}
+							<dl class="telemetry">
+								<div class="telem-line">
+									<dt>CODING TIME</dt>
+									<dd>{coding.total}</dd>
+								</div>
+								{#if coding.streak > 2}
+									<div class="telem-line">
+										<dt>STREAK</dt>
+										<dd class="streak">
+											<img class="fire" src="/images/fire.gif" alt="" aria-hidden="true" />
+											{coding.streak} days
+										</dd>
+									</div>
+								{/if}
+							</dl>
+							{#if coding.langs.length}
+								<div class="lang-breakdown">
+									<div
+										class="pie"
+										style="background: {pieGradient(coding.langs)}"
+										role="img"
+										aria-label="Top languages by coding time"
+									></div>
+									<ul class="legend">
+										{#each coding.langs as l (l.name)}
+											<li>
+												<span class="swatch" style="background: {l.color}"></span>
+												<span class="lname">{l.name}</span>
+												<span class="pct">{Math.round(l.percent)}%</span>
+											</li>
+										{/each}
+									</ul>
+									{#if coding.projects.length}
+										<nav class="projects" aria-label="Top projects">
+											<span class="projects-head">TOP PROJECTS ↗</span>
+											{#each coding.projects as p (p.name)}
+												<a
+													class="proj"
+													href={p.href}
+													target="_blank"
+													rel="noopener noreferrer"
+												>
+													<span class="pname">{p.name}</span>
+													<span class="ptime">{p.text}</span>
+												</a>
+											{/each}
+										</nav>
+									{/if}
+								</div>
+							{/if}
+						{:else if codingErr}
+							<p class="telem-err">⚠ Hackatime telemetry offline — {codingErr}</p>
+						{/if}
 
-				<hr class="divider" />
-
-				<h3 class="sub">Inventory: Useful tools I've picked up</h3>
-				<div class="inventory">
-					{#each inventory as item (item.name)}
-						<span class="slot" title={item.name}>
+						<a class="chart" href="https://github.com/edRipper" target="_blank" rel="noopener noreferrer">
 							<img
-								src={item.src ?? `https://cdn.simpleicons.org/${item.slug}`}
-								alt={item.name}
+								src="https://ghchart.rshah.org/39d353/edRipper"
+								alt="GitHub commit history for edRipper"
 								loading="lazy"
 							/>
-						</span>
-					{/each}
+						</a>
+
+						<h3 class="sub inv-head">Inventory / Tools</h3>
+						<div class="inventory">
+							{#each inventory as item (item.name)}
+								<span class="slot" title={item.name}>
+									<img
+										src={item.src ?? `https://cdn.simpleicons.org/${item.slug}`}
+										alt={item.name}
+										loading="lazy"
+									/>
+								</span>
+							{/each}
+						</div>
+					{:else if statTab === 'story'}
+						{#each storyParas as para, i (i)}
+							{#if i > 0}
+								<div class="flight {i % 2 === 0 ? 'rev' : ''}" aria-hidden="true">
+									<span
+										class="flight-plane"
+										style="animation-duration: {readMs(storyParas[0])}ms"
+									>✈︎</span>
+								</div>
+							{/if}
+							<p class="bio">{para}</p>
+						{/each}
+					{:else}
+						<p class="likes">LIKES: circus arts, robotics, web dev, hackathons</p>
+
+						<h3 class="sub rec-head">My top 3 songs:</h3>
+						<ol class="song-list">
+							{#each songs as s (s.title)}
+								<li>
+									<span class="note">♫</span>
+									<a href={songSearch(s)} target="_blank" rel="noopener noreferrer">
+										{s.title} — {s.artist}
+									</a>
+								</li>
+							{/each}
+						</ol>
+						{#if suggestState === 'done'}
+							<p class="suggest-done">thanks — added to the pile ♪</p>
+						{:else}
+							<form class="song-suggest" onsubmit={submitSuggestion}>
+								<label class="suggest-label" for="suggest-song">know a song i might like?</label>
+								<div class="suggest-row">
+									<input
+										id="suggest-song"
+										type="text"
+										bind:value={suggestSong}
+										maxlength="200"
+										placeholder="song — artist"
+										required
+									/>
+									<input
+										class="suggest-name"
+										type="text"
+										bind:value={suggestName}
+										maxlength="80"
+										placeholder="you (optional)"
+									/>
+									<input
+										class="hp"
+										type="text"
+										tabindex="-1"
+										autocomplete="off"
+										bind:value={suggestHoney}
+										aria-hidden="true"
+									/>
+									<button type="submit" disabled={suggestState === 'sending'}>
+										{suggestState === 'sending' ? '…' : 'send'}
+									</button>
+								</div>
+								{#if suggestState === 'error'}
+									<span class="suggest-err">couldn’t send — try again</span>
+								{/if}
+							</form>
+						{/if}
+
+					{/if}
 				</div>
 			</div>
 		</section>
@@ -473,7 +861,9 @@
 	<!-- ── Missions (projects) ── -->
 	<div class="section-head">
 		<span class="line"></span>
-		<h2>Missions: The adventures I'm lucky enough to do for work</h2>
+		<span class="arrow-stream" aria-hidden="true"></span>
+		<h2>Missions: See challenges from the profession skill tree</h2>
+		<span class="arrow-stream" aria-hidden="true"></span>
 		<span class="line"></span>
 	</div>
 	<section class="panel missions">
@@ -509,7 +899,9 @@
 	<!-- ── Sidequests ── -->
 	<div class="section-head">
 		<span class="line"></span>
-		<h2>Sidequests: The lore I'm building for the fun of it</h2>
+		<span class="arrow-stream" aria-hidden="true"></span>
+		<h2>Sidequests: Lore building adventures on the side of main missions</h2>
+		<span class="arrow-stream" aria-hidden="true"></span>
 		<span class="line"></span>
 	</div>
 	<section class="panel sidequests">
@@ -532,6 +924,15 @@
 		</div>
 	</section>
 
+	<footer class="credits">
+		<p>
+			Music: <a href="https://kubbi.bandcamp.com" target="_blank" rel="noopener noreferrer"
+				>Kubbi — Spirit Dancer</a
+			>
+		</p>
+	</footer>
+
+	<audio bind:this={musicEl} src="/audio/spirit-dancer.mp3" loop preload="none"></audio>
 </main>
 
 <style>
@@ -541,6 +942,7 @@
 		--border: #8f8a7e;
 		--bw: 2px;
 		--text: #1a1814;
+		--accent: #1f9a3d; /* darker green for legibility on the light ground */
 		--shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
 		background: var(--bg);
 		color: var(--text);
@@ -556,6 +958,7 @@
 		--panel: rgba(30, 30, 38, 0.85);
 		--border: #3a3a40;
 		--text: #ece7da;
+		--accent: #39d353; /* brighter green reads better on the dark ground */
 		--shadow: 0 12px 34px rgba(0, 0, 0, 0.6);
 	}
 
@@ -580,6 +983,16 @@
 		flex-direction: column;
 		gap: 1rem;
 		font-family: 'Departure Mono', ui-monospace, monospace;
+	}
+
+	.credits {
+		margin-top: 2rem;
+		text-align: center;
+		font-size: 0.8rem;
+		opacity: 0.7;
+	}
+	.credits a {
+		color: inherit;
 	}
 
 	.topbar {
@@ -609,12 +1022,11 @@
 		border: var(--bw) solid var(--border);
 		background: var(--panel);
 		color: inherit;
-		cursor: pointer;
 		font-family: inherit;
 	}
 	.toggle.active {
-		border-color: #39d353;
-		color: #39d353;
+		border-color: var(--accent);
+		color: var(--accent);
 	}
 	.toggle svg {
 		width: 20px;
@@ -647,11 +1059,46 @@
 		border-bottom: var(--bw) solid var(--border);
 		padding-bottom: 0.3rem;
 	}
-	.stats-head {
+	/* Tab bar across the top of the character panel. */
+	.tabs-head {
 		display: flex;
 		justify-content: space-between;
-		align-items: baseline;
+		align-items: flex-end;
 		gap: 0.75rem;
+		margin-bottom: 0.6rem;
+		padding-bottom: 0;
+		border-bottom: var(--bw) solid var(--border);
+	}
+	.tabs {
+		display: flex;
+		gap: 0.25rem;
+	}
+	.tab {
+		padding: 0.3rem 0.6rem;
+		font-family: inherit;
+		font-size: 0.72rem;
+		letter-spacing: 0.1em;
+		color: inherit;
+		background: transparent;
+		border: var(--bw) solid var(--border);
+		border-bottom: none;
+		opacity: 0.65;
+		transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+	}
+	.tab:hover {
+		opacity: 1;
+	}
+	.tab.active {
+		opacity: 1;
+		color: var(--text);
+		border-color: var(--text);
+		/* sit on top of the head's bottom border so the active tab reads as joined */
+		margin-bottom: calc(-1 * var(--bw));
+		background: var(--panel);
+	}
+	.tab-panel {
+		min-height: 320px;
+		padding-top: 1.1rem;
 	}
 	.stats-email {
 		font-weight: normal;
@@ -659,6 +1106,7 @@
 		text-decoration: none;
 		color: inherit;
 		opacity: 0.8;
+		padding-bottom: 0.3rem;
 	}
 	.stats-email:hover {
 		text-decoration: underline;
@@ -728,12 +1176,6 @@
 			animation: none;
 		}
 	}
-	.model-img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		display: block;
-	}
 	.photo-credit {
 		position: absolute;
 		right: 10px;
@@ -749,6 +1191,51 @@
 	}
 	.model:hover .photo-credit {
 		opacity: 1;
+	}
+	.model-ascii {
+		position: relative;
+		z-index: 1;
+		width: 100%;
+		height: 100%;
+		display: block;
+		object-fit: cover;
+		background: #070608;
+		user-select: none;
+	}
+	/* Light mode: show the whole cut-out print on the panel (no dark fill, no crop). */
+	.model.light .model-ascii {
+		object-fit: contain;
+		background: transparent;
+	}
+	/* Big ASCII stars behind the cut-out, peeking through the removed background. */
+	.star {
+		position: absolute;
+		z-index: 0;
+		margin: 0;
+		font-family: inherit;
+		line-height: 1;
+		white-space: pre;
+		color: var(--accent);
+		pointer-events: none;
+		user-select: none;
+	}
+	.star-a {
+		top: 8px;
+		left: 8px;
+		font-size: 8px;
+		opacity: 0.55;
+	}
+	.star-b {
+		right: 10px;
+		bottom: 10px;
+		font-size: 10px;
+		opacity: 0.45;
+	}
+	.star-c {
+		top: 14px;
+		right: 18px;
+		font-size: 6px;
+		opacity: 0.35;
 	}
 	.location,
 	.likes {
@@ -768,16 +1255,30 @@
 	.xp {
 		margin-bottom: 1rem;
 	}
-	.xp-track {
-		height: 12px;
-		border: var(--bw) solid var(--border);
-		background: rgba(0, 0, 0, 0.2);
+	.xp-bar {
+		flex: 1; /* grow to fill the row, pushing LOCATION to the right edge */
+		display: flex;
+		align-items: stretch;
+		font-size: 0.95rem;
+		line-height: 1;
+		white-space: nowrap;
 		overflow: hidden;
 	}
-	.xp-fill {
-		height: 100%;
-		background: #39d353;
-		transition: width 1.2s ease;
+	.xp-brk {
+		flex: 0 0 auto;
+		color: var(--border);
+	}
+	.xp-cell {
+		flex: 1 1 0; /* cells spread evenly across the widened bar */
+		min-width: 0; /* allow equal widths regardless of glyph (█ is wider than ░) */
+		overflow: hidden;
+		text-align: center;
+		color: rgba(57, 211, 83, 0.4); /* unfilled: visible so the full track reads */
+		transition: color 0.25s ease;
+	}
+	.xp-cell.on {
+		color: var(--accent);
+		text-shadow: 0 0 2px rgba(57, 211, 83, 0.5); /* subtle CRT glow, no bleed */
 	}
 	.xp-label {
 		display: block;
@@ -811,12 +1312,43 @@
 	.section-head .line {
 		flex: 1;
 		height: 0;
-		border-top: 5px solid var(--border);
+		border-top: 5px solid var(--text);
 	}
 	.section-head h2 {
 		margin: 0;
 		font-size: 0.95rem;
 		text-align: center;
+	}
+	/* Pixel down-arrows scrolling as a seamless carousel beside the heading. The
+	   SVG is used as a mask so the arrows inherit the divider's --text colour;
+	   shifting the mask by exactly one cell per loop makes the stream continuous,
+	   and the fixed height clips each arrow as the next follows it down. */
+	.arrow-stream {
+		flex: 0 0 auto;
+		width: 14px;
+		height: 1em;
+		background-color: var(--text);
+		image-rendering: pixelated;
+		-webkit-mask-image: url('/images/arrow-down.svg');
+		mask-image: url('/images/arrow-down.svg');
+		-webkit-mask-repeat: repeat-y;
+		mask-repeat: repeat-y;
+		-webkit-mask-position: center 0;
+		mask-position: center 0;
+		-webkit-mask-size: 14px 18px;
+		mask-size: 14px 18px;
+		animation: arrow-stream 0.85s linear infinite;
+	}
+	@keyframes arrow-stream {
+		to {
+			-webkit-mask-position: center 18px;
+			mask-position: center 18px;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.arrow-stream {
+			animation: none;
+		}
 	}
 
 	/* missions */
@@ -857,7 +1389,10 @@
 	/* For transparent logos: show the whole (square) image on a white ground. */
 	.card-img.contain {
 		object-fit: contain;
-		background: #fff;
+		/* Match the card colour (panel over page bg). Kept opaque so the card's
+		   text underneath stays hidden when the image fades in. Adapts to theme. */
+		background-color: var(--bg);
+		background-image: linear-gradient(var(--panel), var(--panel));
 	}
 	.mission:global(.hovering) .card-img {
 		opacity: 1;
@@ -872,8 +1407,8 @@
 		color: #e6b23e;
 	}
 	.badge.complete {
-		border-color: #39d353;
-		color: #39d353;
+		border-color: var(--accent);
+		color: var(--accent);
 	}
 	/* The amber reads too light on the off-white background — darken it. */
 	:global(body:not(.dark)) .badge:not(.complete) {
@@ -894,10 +1429,282 @@
 		font-size: 0.85rem;
 		line-height: 1.55;
 	}
-	.divider {
-		border: none;
-		border-top: var(--bw) solid var(--border);
-		margin: 1.25rem 0;
+	/* Animated plane hopping along a dashed line between paragraphs. */
+	.flight {
+		position: relative;
+		height: 1.5rem;
+		margin: 0.9rem 0;
+		overflow: hidden;
+	}
+	.flight::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 50%;
+		border-top: 2px dashed var(--border);
+	}
+	.flight-plane {
+		position: absolute;
+		top: 50%;
+		left: 0;
+		line-height: 1;
+		font-size: 1rem;
+		color: var(--text);
+		background: var(--panel); /* mask the dashes directly under the plane */
+		padding: 0 0.1ch;
+		/* Crosses the line once and loops; the duration is set per-plane inline to
+		   the reading time of the paragraph above it, so it paces your reading. */
+		animation: fly 12s steps(48) infinite;
+	}
+	/* `left` is container-relative, so the plane spans the full line width on any
+	   screen; the matching translate keeps the whole glyph on-screen at each end. */
+	@keyframes fly {
+		from {
+			left: 0%;
+			transform: translate(0%, -50%);
+		}
+		to {
+			left: 100%;
+			transform: translate(-100%, -50%);
+		}
+	}
+	/* Return flight: start at the right, hop leftwards, glyph mirrored. */
+	.flight.rev .flight-plane {
+		animation-name: fly-rev;
+	}
+	@keyframes fly-rev {
+		from {
+			left: 100%;
+			transform: translate(-100%, -50%) scaleX(-1);
+		}
+		to {
+			left: 0%;
+			transform: translate(0%, -50%) scaleX(-1);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.flight-plane {
+			animation: none;
+			opacity: 1;
+			left: 50%;
+			transform: translate(-50%, -50%);
+		}
+	}
+	.inv-head {
+		margin-top: 1.25rem;
+	}
+	/* Personality: song rec. */
+	.rec-head {
+		margin-top: 1.25rem;
+	}
+	.song-list {
+		list-style: none;
+		margin: 0 0 0.6rem;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+		font-size: 0.85rem;
+	}
+	.song-list li {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	.song-list .note {
+		color: var(--accent);
+	}
+	.song-list a {
+		color: inherit;
+		text-decoration: none;
+	}
+	.song-list a:hover {
+		color: var(--accent);
+		text-decoration: underline;
+	}
+	.suggest-label {
+		display: block;
+		font-size: 0.78rem;
+		opacity: 0.8;
+		margin-bottom: 0.35rem;
+	}
+	.suggest-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+	}
+	.suggest-row input {
+		flex: 1 1 9rem;
+		min-width: 0;
+		padding: 0.35rem 0.5rem;
+		font-family: inherit;
+		font-size: 0.8rem;
+		color: inherit;
+		background: var(--panel);
+		border: var(--bw) solid var(--border);
+	}
+	.suggest-row input.suggest-name {
+		flex: 0 1 7rem;
+	}
+	.suggest-row input:focus {
+		outline: none;
+		border-color: var(--accent);
+	}
+	.suggest-row button {
+		flex: 0 0 auto;
+		padding: 0.35rem 0.8rem;
+		font-family: inherit;
+		font-size: 0.8rem;
+		color: inherit;
+		background: transparent;
+		border: var(--bw) solid var(--border);
+	}
+	.suggest-row button:hover {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+	.suggest-row button:disabled {
+		opacity: 0.5;
+	}
+	/* Honeypot — kept in the DOM for bots, hidden from real users. */
+	.hp {
+		position: absolute;
+		left: -9999px;
+		width: 1px;
+		height: 1px;
+		opacity: 0;
+	}
+	.suggest-err {
+		display: block;
+		margin-top: 0.3rem;
+		font-size: 0.72rem;
+		color: #e6b23e;
+	}
+	.suggest-done {
+		margin: 0;
+		font-size: 0.8rem;
+		color: var(--accent);
+	}
+	/* Hackatime telemetry: terminal-style key/value readout. */
+	.telemetry {
+		margin: 0 0 1.1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		border: var(--bw) solid var(--border);
+		padding: 0.6rem 0.75rem;
+	}
+	.telem-line {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: 0.75rem;
+	}
+	.telem-line dt {
+		font-size: 0.62rem;
+		letter-spacing: 0.12em;
+		opacity: 0.7;
+	}
+	.telem-line dd {
+		margin: 0;
+		font-size: 0.85rem;
+		color: var(--accent);
+		text-align: right;
+	}
+	.telem-line dd.streak {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		color: inherit;
+	}
+	.fire {
+		width: 18px;
+		height: 18px;
+		image-rendering: pixelated; /* keep the pixel art crisp when scaled */
+	}
+	.telem-err {
+		margin: 0 0 1.1rem;
+		font-size: 0.72rem;
+		letter-spacing: 0.05em;
+		color: #e6b23e;
+		opacity: 0.85;
+	}
+	/* Language pie + legend */
+	.lang-breakdown {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		margin: 0 0 1.1rem;
+		padding: 0.75rem;
+		border: var(--bw) solid var(--border);
+	}
+	.pie {
+		flex-shrink: 0;
+		width: 96px;
+		height: 96px;
+		border-radius: 50%;
+		border: var(--bw) solid var(--border);
+	}
+	.legend {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.32rem;
+		min-width: 130px;
+		font-size: 0.72rem;
+	}
+	.legend li {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+	.swatch {
+		flex-shrink: 0;
+		width: 10px;
+		height: 10px;
+	}
+	.legend .pct {
+		margin-left: auto;
+		opacity: 0.7;
+	}
+	.projects {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.32rem;
+		font-size: 0.72rem;
+	}
+	.projects-head {
+		font-size: 0.6rem;
+		letter-spacing: 0.12em;
+		opacity: 0.6;
+		margin-bottom: 0.1rem;
+	}
+	.proj {
+		display: flex;
+		justify-content: space-between;
+		gap: 0.6rem;
+		color: inherit;
+		text-decoration: none;
+	}
+	.proj .pname {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.proj .ptime {
+		flex-shrink: 0;
+		opacity: 0.7;
+	}
+	.proj:hover {
+		color: var(--accent);
+	}
+	.proj:hover .pname {
+		text-decoration: underline;
 	}
 	.inventory {
 		display: flex;
@@ -914,7 +1721,7 @@
 		transition: border-color 0.15s ease;
 	}
 	.slot:hover {
-		border-color: #39d353;
+		border-color: var(--accent);
 	}
 	.slot img {
 		width: 24px;
@@ -967,8 +1774,8 @@
 			border-right: none;
 			border-bottom: var(--bw) solid var(--border);
 		}
-		/* Let the long heading + email wrap instead of overflowing. */
-		.stats-head {
+		/* Let the tabs + email wrap instead of overflowing. */
+		.tabs-head {
 			flex-wrap: wrap;
 			gap: 0.25rem 0.75rem;
 		}
@@ -984,6 +1791,29 @@
 		}
 		.mission-grid {
 			grid-template-columns: 1fr;
+		}
+	}
+
+	/* Phones: stack the rows that assume a wide panel so nothing overflows. */
+	@media (max-width: 560px) {
+		/* XP bar gets its own full-width line under the level badge + location. */
+		.stat-row {
+			flex-wrap: wrap;
+		}
+		.location {
+			order: 1;
+		}
+		.xp-bar {
+			order: 2;
+			flex-basis: 100%;
+		}
+		/* Pie + legend share a row; the projects list drops below, full width. */
+		.lang-breakdown {
+			flex-wrap: wrap;
+			gap: 0.75rem 1rem;
+		}
+		.projects {
+			flex-basis: 100%;
 		}
 	}
 </style>
