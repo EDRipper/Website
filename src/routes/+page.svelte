@@ -126,6 +126,12 @@
 		voice(660, 0.06, AUDIO_VOL);
 		voice(990, 0.08, AUDIO_VOL, 'square', 0.055);
 	};
+	// Soft two-note rise played when a section first scrolls into view.
+	const discoverSound = () => {
+		if (!soundOn) return;
+		voice(523.25, 0.09, AUDIO_VOL * 0.55, 'triangle');
+		voice(783.99, 0.13, AUDIO_VOL * 0.55, 'triangle', 0.07);
+	};
 
 	// Background music: Kubbi — Spirit Dancer (credit at the foot of the page).
 	let musicEl: HTMLAudioElement | null = null;
@@ -241,11 +247,15 @@
 	];
 
 	// ── Personality recommendations ──────────────────────────────────────────
-	// Top 3 songs (linked to a Spotify search); visitors can suggest one back.
+	// Favorite songs (linked to a Spotify search); visitors can suggest one back.
 	const songs = [
 		{ title: 'Creature', artist: 'half·alive' },
 		{ title: 'Nobody', artist: 'Hozier' },
-		{ title: 'Ankles', artist: 'Lucy Dacus' }
+		{ title: 'Ankles', artist: 'Lucy Dacus' },
+		{ title: 'Banana Pancakes', artist: 'Jack Johnson' },
+		{ title: 'Fade Into You', artist: 'Mazzy Star' },
+		{ title: 'Angry Young Man', artist: 'Billy Joel' },
+		{ title: 'First Love / Late Spring', artist: 'Mitski' }
 	];
 	const songSearch = (s: { title: string; artist: string }) =>
 		`https://open.spotify.com/search/${encodeURIComponent(`${s.title} ${s.artist}`)}`;
@@ -291,6 +301,44 @@
 				clearTimeout(timer);
 				node.removeEventListener('pointerenter', enter);
 				node.removeEventListener('pointerleave', leave);
+			}
+		};
+	}
+
+	// Reveal-on-scroll: fade/slide an element in the first time it enters view.
+	// `delay` staggers grouped items (cards); `sound` plays the discovery note.
+	// Classes are stripped after the transition so they never shadow the card's
+	// own hover transitions. Skipped entirely under prefers-reduced-motion.
+	function reveal(node: HTMLElement, opts: { delay?: number; sound?: boolean } = {}) {
+		const { delay = 0, sound = false } = opts;
+		if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return {};
+		node.classList.add('reveal');
+		const onEnd = (ev: TransitionEvent) => {
+			if (ev.propertyName !== 'opacity') return;
+			node.classList.remove('reveal', 'in');
+			node.removeEventListener('transitionend', onEnd);
+		};
+		const show = () => {
+			node.addEventListener('transitionend', onEnd);
+			node.classList.add('in');
+			if (sound) discoverSound();
+		};
+		const io = new IntersectionObserver(
+			(entries) => {
+				for (const e of entries) {
+					if (!e.isIntersecting) continue;
+					io.disconnect();
+					if (delay) setTimeout(show, delay);
+					else show();
+				}
+			},
+			{ rootMargin: '0px 0px -10% 0px', threshold: 0.12 }
+		);
+		io.observe(node);
+		return {
+			destroy() {
+				io.disconnect();
+				node.removeEventListener('transitionend', onEnd);
 			}
 		};
 	}
@@ -801,13 +849,13 @@
 					{:else}
 						<p class="likes">LIKES: circus arts, robotics, web dev, hackathons</p>
 
-						<h3 class="sub rec-head">My top 3 songs:</h3>
+						<h3 class="sub rec-head">My favorite songs:</h3>
 						<ol class="song-list">
 							{#each songs as s (s.title)}
 								<li>
 									<span class="note">♫</span>
 									<a href={songSearch(s)} target="_blank" rel="noopener noreferrer">
-										{s.title} — {s.artist}
+										{s.title} · {s.artist}
 									</a>
 								</li>
 							{/each}
@@ -859,7 +907,7 @@
 	</div>
 
 	<!-- ── Missions (projects) ── -->
-	<div class="section-head">
+	<div class="section-head" use:reveal={{ sound: true }}>
 		<span class="line"></span>
 		<span class="arrow-stream" aria-hidden="true"></span>
 		<h2>Missions: See challenges from the profession skill tree</h2>
@@ -868,7 +916,7 @@
 	</div>
 	<section class="panel missions">
 		<div class="mission-grid">
-			{#each missions as m (m.name)}
+			{#each missions as m, i (m.name)}
 				{@const external = m.href?.startsWith('http')}
 				<svelte:element
 					this={m.href ? 'a' : 'div'}
@@ -878,6 +926,7 @@
 					target={external ? '_blank' : undefined}
 					rel={external ? 'noopener noreferrer' : undefined}
 					use:hoverHold
+					use:reveal={{ delay: i * 70 }}
 				>
 					{#if m.status !== 'OPEN'}
 						<img
@@ -897,7 +946,7 @@
 	</section>
 
 	<!-- ── Sidequests ── -->
-	<div class="section-head">
+	<div class="section-head" use:reveal={{ sound: true }}>
 		<span class="line"></span>
 		<span class="arrow-stream" aria-hidden="true"></span>
 		<h2>Sidequests: Lore building adventures on the side of main missions</h2>
@@ -906,8 +955,8 @@
 	</div>
 	<section class="panel sidequests">
 		<div class="mission-grid">
-			{#each sidequests as q (q.name)}
-				<a class="mission" href={q.href} use:hoverHold>
+			{#each sidequests as q, i (q.name)}
+				<a class="mission" href={q.href} use:hoverHold use:reveal={{ delay: i * 70 }}>
 					<img
 						class="card-img"
 						src={q.image ?? '/images/coming-soon.svg'}
@@ -1147,7 +1196,11 @@
 	}
 	.model {
 		position: relative;
-		flex: 1;
+		/* Size from our own width, not the sibling tab's height — otherwise switching
+		   tabs changes the stage height and resizes the portrait. Ratio matches the
+		   canvas (cols·CW / rows·LH ≈ 102/73) so cover shows the full frame, no crop. */
+		width: 100%;
+		aspect-ratio: 102 / 73;
 		display: grid;
 		place-items: center;
 		margin: 1rem 0;
@@ -1257,6 +1310,7 @@
 	}
 	.xp-bar {
 		flex: 1; /* grow to fill the row, pushing LOCATION to the right edge */
+		min-width: 0; /* let the nowrap cells clip instead of forcing the column wide */
 		display: flex;
 		align-items: stretch;
 		font-size: 0.95rem;
@@ -1301,6 +1355,19 @@
 	   colour to black, invert(1) then makes it white) so none come out tinted. */
 	:global(body.dark) .mono {
 		filter: brightness(0) invert(1);
+	}
+
+	/* Scroll-reveal: hidden until the `reveal` action adds `.in` on entry. The
+	   action strips both classes after the transition, so this never lingers. */
+	:global(.reveal) {
+		opacity: 0;
+		transform: translateY(18px);
+		transition: opacity 0.55s ease, transform 0.55s ease;
+		will-change: opacity, transform;
+	}
+	:global(.reveal.in) {
+		opacity: 1;
+		transform: none;
 	}
 
 	.section-head {
@@ -1502,22 +1569,27 @@
 		list-style: none;
 		margin: 0 0 0.6rem;
 		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.3rem 1.25rem;
 		font-size: 0.85rem;
 	}
 	.song-list li {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
+		min-width: 0;
 	}
 	.song-list .note {
-		color: var(--accent);
+		color: #3ec500;
+		flex: 0 0 auto;
 	}
 	.song-list a {
 		color: inherit;
 		text-decoration: none;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.song-list a:hover {
 		color: var(--accent);
@@ -1633,6 +1705,7 @@
 	/* Language pie + legend */
 	.lang-breakdown {
 		display: flex;
+		flex-wrap: wrap; /* pie / legend / projects wrap instead of spilling when cramped */
 		align-items: center;
 		gap: 1rem;
 		margin: 0 0 1.1rem;
@@ -1653,7 +1726,8 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.32rem;
-		min-width: 130px;
+		flex: 1 1 130px; /* prefer ~130px but allow shrinking so it never overflows */
+		min-width: 0;
 		font-size: 0.72rem;
 	}
 	.legend li {
@@ -1752,22 +1826,14 @@
 
 	@media (max-width: 940px) {
 		.layout {
-			grid-template-columns: 1fr;
+			/* minmax(0,…) lets the column shrink below its content's min width so
+			   nowrap children (e.g. the XP bar) clip rather than overflow. */
+			grid-template-columns: minmax(0, 1fr);
 		}
+		/* Stack the portrait above the stats so each gets the full panel width —
+		   side by side they're too narrow and the tabs/stats spill over the edge. */
 		.stage {
 			order: -1;
-		}
-	}
-
-	@media (max-width: 700px) {
-		.screen {
-			padding: 1rem 1rem 7rem;
-		}
-		.topbar h1 {
-			font-size: 1.1rem;
-		}
-		/* Stack the model and stats instead of cramming them side by side. */
-		.stage {
 			flex-direction: column;
 		}
 		.model-half {
@@ -1781,6 +1847,15 @@
 		}
 		.stats-email {
 			word-break: break-all;
+		}
+	}
+
+	@media (max-width: 700px) {
+		.screen {
+			padding: 1rem 1rem 7rem;
+		}
+		.topbar h1 {
+			font-size: 1.1rem;
 		}
 		.section-head {
 			margin: 1.75rem 0;
@@ -1814,6 +1889,10 @@
 		}
 		.projects {
 			flex-basis: 100%;
+		}
+		/* Song list drops back to a single column when the panel gets narrow. */
+		.song-list {
+			grid-template-columns: minmax(0, 1fr);
 		}
 	}
 </style>
