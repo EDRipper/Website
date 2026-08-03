@@ -1,5 +1,5 @@
 <script lang="ts">
-	// "Customise your character" screen — character card, commit stats and missions.
+	// main page type shit
 	import { onMount } from 'svelte';
 	import { portraitCols, portraitRows, portraitChars, portraitColors } from '$lib/portrait-ascii';
 	import { iceCols, iceRows, iceChars, iceColors } from '$lib/ice-ascii';
@@ -14,18 +14,7 @@
 	let euanRGB: Uint8Array | null = null;
 	let iceRGB: Uint8Array | null = null;
 
-	// A big 5-point ASCII star, scattered around the light-mode portrait.
-	const STAR = `       *
-      ***
-     *****
-    *******
-***************
- *************
-  ***********
-   ***   ***
-  ***     ***
- ***       ***
-**           **`;
+
 
 	// Paint the ASCII portrait onto a canvas. Dark mode: the colour selfie on a
 	// near-black ground (each cell a dimmed fill + brighter glyph). Light mode: the
@@ -66,17 +55,13 @@
 			for (let rx = 0; rx < cols; rx++, p++) {
 				const ch = chars[base + rx];
 				const r = rgb[p * 3], g = rgb[p * 3 + 1], b = rgb[p * 3 + 2];
-				if (light) {
-					if (ch === ' ') continue;
-					ctx.fillStyle = `rgb(${(r * INK) | 0},${(g * INK) | 0},${(b * INK) | 0})`;
-					ctx.fillText(ch, rx * CW, ry * LH);
-				} else {
-					ctx.fillStyle = `rgb(${r * BG},${g * BG},${b * BG})`;
-					ctx.fillRect(rx * CW, ry * LH, CW + 1, LH + 1);
-					if (ch === ' ') continue;
-					ctx.fillStyle = `rgb(${r},${g},${b})`;
-					ctx.fillText(ch, rx * CW, ry * LH);
-				}
+
+				ctx.fillStyle = `rgb(${r * BG},${g * BG},${b * BG})`;
+				ctx.fillRect(rx * CW, ry * LH, CW + 1, LH + 1);
+				if (ch === ' ') continue;
+				ctx.fillStyle = `rgb(${r},${g},${b})`;
+				ctx.fillText(ch, rx * CW, ry * LH);
+			
 			}
 		}
 	}
@@ -86,11 +71,13 @@
 	});
 
 	// Theme. Initialised from the OS preference on mount, then user-toggleable.
+	// meh, i dont like light mode
+	//**
+	
 	let dark = $state(true);
-	$effect(() => {
-		document.body.classList.toggle('dark', dark);
-	});
 
+ 
+	 
 	// ── Synthesised audio: menu SFX + chiptune background loop (no files) ──
 	let soundOn = $state(true);
 	let musicOn = $state(false);
@@ -207,8 +194,8 @@
 						Math.sin((x + y) * 0.016 + t * 0.2);
 					const v = (s + 3) / 6;
 					const thr = (bayer[(y & 3) * 4 + (x & 3)] + 0.5) / 16;
-					// dark dots on light (light mode); inverted for dark mode
-					const on = v > thr !== dark ? 0 : 255;
+					// inverted for dark mode
+					const on = v > thr !== true ? 0 : 255;
 					const i = (y * cols + x) * 4;
 					data[i] = data[i + 1] = data[i + 2] = on;
 					data[i + 3] = 255;
@@ -232,20 +219,6 @@
 		class: 'Euan Ripper',
 		title: 'Programmer, Builder, Outdoorsy Nerd'
 	};
-
-	// Tools in the "inventory". Most logos come from the Simple Icons CDN (by
-	// slug); a couple use self-hosted full-colour SVGs via `src`.
-	const inventory = [
-		{ name: 'Svelte', slug: 'svelte' },
-		{ name: 'PostgreSQL', slug: 'postgresql' },
-		{ name: 'Airtable', src: '/images/airtable.svg' },
-		{ name: 'Python', src: '/images/python.svg' },
-		{ name: 'JavaScript', slug: 'javascript' },
-		{ name: 'Metabase', slug: 'metabase' },
-		{ name: 'NestJS', slug: 'nestjs' },
-		{ name: 'Fusion 360', src: '/images/fusion360.svg' }
-	];
-
 	// ── Personality recommendations ──────────────────────────────────────────
 	// Favorite songs (linked to a Spotify search); visitors can suggest one back.
 	const songs = [
@@ -283,6 +256,23 @@
 			suggestState = 'error';
 		}
 	}
+
+
+	// Tools in the "inventory". Most logos come from the Simple Icons CDN (by
+	// slug); a couple use self-hosted full-colour SVGs via `src`.
+	const inventory = [
+		{ name: 'Svelte', slug: 'svelte' },
+		{ name: 'PostgreSQL', slug: 'postgresql' },
+		{ name: 'Airtable', src: '/images/airtable.svg' },
+		{ name: 'Python', src: '/images/python.svg' },
+		{ name: 'JavaScript', slug: 'javascript' },
+		{ name: 'Metabase', slug: 'metabase' },
+		{ name: 'NestJS', slug: 'nestjs' },
+		{ name: 'Fusion 360', src: '/images/fusion360.svg' }
+	];
+
+
+
 	// Adds `.hovering` on pointer enter and removes it `delay` ms after leave, so
 	// the reveal always completes (never reverses mid-way) and lingers on exit.
 	function hoverHold(node: HTMLElement, delay = 1000) {
@@ -372,11 +362,12 @@
 
 	// Right-hand character panel is split into tabs.
 	const statTabs = [
+		{ id: 'personality', label: 'PERSONALITY' },
 		{ id: 'stats', label: 'STATS' },
-		{ id: 'story', label: 'STORY' },
-		{ id: 'personality', label: 'PERSONALITY' }
+		{ id: 'story', label: 'STORY' }
+		
 	] as const;
-	let statTab = $state<(typeof statTabs)[number]['id']>('stats');
+	let statTab = $state<(typeof statTabs)[number]['id']>('personality');
 
 	// Story paragraphs, rendered with animated plane dividers between them.
 	const storyParas = [
@@ -389,11 +380,7 @@
 	const STORY_WPM = 230;
 	const readMs = (text: string) => (text.trim().split(/\s+/).length / STORY_WPM) * 60000;
 
-	// ── Hackatime coding stats ───────────────────────────────────────────────
-	// Public stats lookup must be enabled in Hackatime (Settings → My Settings →
-	// Privacy). The public endpoint only exposes language/project breakdowns —
-	// editor/OS would need an authenticated key, so "loadout" uses top language
-	// + top project (no secret shipped to the browser).
+	// Hackatime stuff, maybe replace?
 	const HACKATIME_USER = 'U098SB3609L';
 	// Slice colours for the language pie (last is grey for the "Other" bucket).
 	const LANG_COLORS = ['var(--accent)', '#4dd2ff', '#e6b23e', '#ff6b9d', '#b48cff', '#8f8a7e'];
@@ -652,32 +639,7 @@
 				</svg>
 			{/if}
 		</button>
-		<button
-			class="toggle"
-			onclick={() => (dark = !dark)}
-			aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-			title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-		>
-			{#if dark}
-				<!-- sun -->
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<circle cx="12" cy="12" r="5" />
-					<line x1="12" y1="1" x2="12" y2="3" />
-					<line x1="12" y1="21" x2="12" y2="23" />
-					<line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-					<line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-					<line x1="1" y1="12" x2="3" y2="12" />
-					<line x1="21" y1="12" x2="23" y2="12" />
-					<line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-					<line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-				</svg>
-			{:else}
-				<!-- moon -->
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-				</svg>
-			{/if}
-		</button>
+
 		</div>
 	</header>
 
@@ -703,11 +665,7 @@
 					</div>
 				</div>
 				<div class="model" class:light={!dark}>
-					{#if !dark}
-						<pre class="star star-a" aria-hidden="true">{STAR}</pre>
-						<pre class="star star-b" aria-hidden="true">{STAR}</pre>
-						<pre class="star star-c" aria-hidden="true">{STAR}</pre>
-					{/if}
+
 					<canvas
 						class="model-ascii"
 						bind:this={asciiCanvas}
@@ -811,7 +769,7 @@
 								</div>
 							{/if}
 						{:else if codingErr}
-							<p class="telem-err">⚠ Hackatime telemetry offline — {codingErr}</p>
+							<p class="telem-err">⚠ Hackatime is down or pushed breaking changes {codingErr}</p>
 						{/if}
 
 						<a class="chart" href="https://github.com/edRipper" target="_blank" rel="noopener noreferrer">
@@ -861,7 +819,7 @@
 							{/each}
 						</ol>
 						{#if suggestState === 'done'}
-							<p class="suggest-done">thanks — added to the pile ♪</p>
+							<p class="suggest-done">thank you &lt;3, I will give it a listen!</p>
 						{:else}
 							<form class="song-suggest" onsubmit={submitSuggestion}>
 								<label class="suggest-label" for="suggest-song">know a song i might like?</label>
