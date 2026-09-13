@@ -1,24 +1,26 @@
 <script lang="ts">
 	// Placeholder blog post page — real content to be written per slug later.
-	import { page } from '$app/state';
+	// Unwritten posts are noindexed so search engines don't list empty pages.
+	import Seo from '$lib/Seo.svelte';
+	import type { PageProps } from './$types';
 
-	const title = $derived(
-		(page.params.slug ?? '')
-			.split('-')
-			.map((w) => w[0].toUpperCase() + w.slice(1))
-			.join(' ')
-	);
+	let { data }: PageProps = $props();
+	const post = $derived(data.post);
 </script>
 
-<svelte:head>
-	<title>Euan Ripper — {title}</title>
-</svelte:head>
+<Seo
+	title="Euan Ripper — {post.title}"
+	description={post.brief}
+	path="/blog/{post.slug}"
+	type="article"
+	noindex={!post.published}
+/>
 
 <main class="screen">
 	<a class="back" href="/">‹ BACK TO MISSIONS</a>
 
 	<article class="panel">
-		<h1>{title}</h1>
+		<h1>{post.title}</h1>
 		<p class="muted">ill write the blogs later :p</p>
 	</article>
 </main>

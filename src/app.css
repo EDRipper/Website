@@ -8,9 +8,74 @@
 	font-display: swap;
 }
 
+/* From hackclub/strands (static/fonts/OnlyTrue-Neutral.woff2). */
+@font-face {
+	font-family: 'OnlyTrue';
+	src: url('/fonts/OnlyTrue-Neutral.woff2') format('woff2');
+	font-stretch: normal;
+	font-display: swap;
+}
+
 html,
 body {
 	margin: 0;
 	padding: 0;
 	overflow-x: clip;
+}
+
+/* Cursor from hackclub/beest: a chunky white arrow that grows a little while pressed.
+   Mouse/trackpad only; touch screens keep the system behaviour. */
+@media (pointer: fine) {
+	html,
+	html * {
+		cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='28' viewBox='0 0 32 36'%3E%3Cpolygon points='3,2 3,30 12,23 19,34 25,31 18,20 29,17' fill='%23ffffff' stroke='%234b4840' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E")
+				2 2,
+			auto;
+	}
+	html *:active {
+		cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='36' viewBox='0 0 32 36'%3E%3Cpolygon points='3,2 3,30 12,23 19,34 25,31 18,20 29,17' fill='%23ffffff' stroke='%234b4840' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E")
+				3 2,
+			auto;
+	}
+}
+
+/* Light/dark switch: a slow crossfade from the old look to the new (see toggleTheme). */
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation-duration: 0.7s;
+	animation-timing-function: ease-in-out;
+}
+
+/* Scrollbar in the page's greys: the ground (#131318) as the track, the border grey as the thumb. */
+html {
+	scrollbar-color: #3a3a40 #131318;
+}
+::-webkit-scrollbar {
+	width: 12px;
+	height: 12px;
+}
+::-webkit-scrollbar-track {
+	background: #131318;
+}
+::-webkit-scrollbar-thumb {
+	background: #3a3a40;
+	border: 3px solid #131318;
+}
+::-webkit-scrollbar-thumb:hover {
+	background: #4a4a52;
+}
+
+/* Light mode (no .dark on body): the light ground as the track, its border grey as the thumb. */
+html:has(body:not(.dark)) {
+	scrollbar-color: #aab396 #e3e8d3;
+}
+html:has(body:not(.dark)) ::-webkit-scrollbar-track {
+	background: #e3e8d3;
+}
+html:has(body:not(.dark)) ::-webkit-scrollbar-thumb {
+	background: #aab396;
+	border-color: #e3e8d3;
+}
+html:has(body:not(.dark)) ::-webkit-scrollbar-thumb:hover {
+	background: #8c977a;
 }

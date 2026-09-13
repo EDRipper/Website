@@ -1,10 +1,20 @@
 <script lang="ts">
 	// main page type shit
-	import { onMount } from 'svelte';
+	import { flushSync, onMount } from 'svelte';
 	import { portraitCols, portraitRows, portraitChars, portraitColors } from '$lib/portrait-ascii';
-	import { iceCols, iceRows, iceChars, iceColors } from '$lib/ice-ascii';
+	import DitherButterflies from '$lib/DitherButterflies.svelte';
+	import Seo from '$lib/Seo.svelte';
+	import { funFacts, songs, inventory, story as storyParas, missions, sidequests } from '$lib/content';
+	import { HOME_TITLE, HOME_DESCRIPTION, homeJsonLd } from '$lib/seo';
+	import ArrowEditor from '$lib/ArrowEditor.svelte';
+	import { TRAIL_PATH, measureTrail, sampleTrail, trailFinish, trailHead, type Pt, type TrailFrame } from '$lib/scroll-trail';
 
-	// Decode a base64 RGB blob (one per portrait) to bytes, lazily.
+	let { editArrow = false }: { editArrow?: boolean } = $props(); // true on /arrow-editor
+
+	// The email icon opens a draft with a friendly subject and message already filled in.
+	const mailHref = `mailto:euanripper2@gmail.com?subject=${encodeURIComponent('wow, you have such a cool site!')}&body=${encodeURIComponent("I couldn't resist reaching out to say so!")}`;
+
+	// Decode the portrait's base64 RGB blob to bytes, lazily.
 	function decodeRGB(b64: string): Uint8Array {
 		const bin = atob(b64);
 		const buf = new Uint8Array(bin.length);
@@ -12,14 +22,11 @@
 		return buf;
 	}
 	let euanRGB: Uint8Array | null = null;
-	let iceRGB: Uint8Array | null = null;
 
 
-
-	// Paint the ASCII portrait onto a canvas. Dark mode: the colour selfie on a
-	// near-black ground (each cell a dimmed fill + brighter glyph). Light mode: the
-	// ice-rink selfie with its background cut out, drawn as darker ink on the light
-	// panel (transparent, no fill) so it reads like a print. CSS scales it to fit.
+	// Paint the ASCII portrait onto a canvas: the colour selfie on a near-black ground,
+	// each cell a dimmed fill behind a brighter glyph. The same in both themes. CSS
+	// scales it to fit.
 	const FONT = 12;
 	const CW = FONT * 0.6; // monospace advance
 	const LH = FONT; // line height
@@ -29,58 +36,90 @@
 		if (!cv) return;
 		const ctx = cv.getContext('2d');
 		if (!ctx) return;
-		const light = !dark;
-		const cols = light ? iceCols : portraitCols;
-		const rows = light ? iceRows : portraitRows;
-		const chars = light ? iceChars : portraitChars;
-		const rgb = light
-			? (iceRGB ??= decodeRGB(iceColors))
-			: (euanRGB ??= decodeRGB(portraitColors));
-		cv.width = cols * CW;
-		cv.height = rows * LH;
-		if (light) {
-			ctx.clearRect(0, 0, cv.width, cv.height); // transparent → light panel shows
-		} else {
-			ctx.fillStyle = '#070608';
-			ctx.fillRect(0, 0, cv.width, cv.height);
-		}
+		const rgb = (euanRGB ??= decodeRGB(portraitColors));
+		cv.width = portraitCols * CW;
+		cv.height = portraitRows * LH;
+		ctx.fillStyle = '#070608';
+		ctx.fillRect(0, 0, cv.width, cv.height);
 		ctx.font = `${FONT}px 'Departure Mono', ui-monospace, monospace`;
 		ctx.textBaseline = 'top';
-		const INK = light ? 0.6 : 1; // darken the print so it carries on the light ground
 		const BG = 0.5;
 		let p = 0;
-		for (let ry = 0; ry < rows; ry++) {
+		for (let ry = 0; ry < portraitRows; ry++) {
 			// +ry skips the row's trailing newline in the flat chars string.
-			const base = ry * (cols + 1);
-			for (let rx = 0; rx < cols; rx++, p++) {
-				const ch = chars[base + rx];
+			const base = ry * (portraitCols + 1);
+			for (let rx = 0; rx < portraitCols; rx++, p++) {
+				const ch = portraitChars[base + rx];
 				const r = rgb[p * 3], g = rgb[p * 3 + 1], b = rgb[p * 3 + 2];
-
 				ctx.fillStyle = `rgb(${r * BG},${g * BG},${b * BG})`;
 				ctx.fillRect(rx * CW, ry * LH, CW + 1, LH + 1);
 				if (ch === ' ') continue;
 				ctx.fillStyle = `rgb(${r},${g},${b})`;
 				ctx.fillText(ch, rx * CW, ry * LH);
-			
 			}
 		}
 	}
 	$effect(() => {
-		dark; // redraw when the theme flips
 		if (asciiCanvas) drawAscii();
 	});
 
-	// Theme. Initialised from the OS preference on mount, then user-toggleable.
+	// Theme: dark by default, light if the visitor picked it (saved, and applied by
+	// app.html before first paint).
 	// meh, i dont like light mode
 	//**
 	
 	let dark = $state(true);
+	onMount(() => {
+		dark = document.body.classList.contains('dark');
+	});
+	function toggleTheme() {
+		const swap = () => {
+			dark = !dark;
+			document.body.classList.toggle('dark', dark);
+			flushSync(); // apply it (and redraw the dither) now, for the crossfade's "after" snapshot
+		};
+		// Crossfade from the old look to the new where view transitions are supported
+		// (timing in app.css); otherwise, or with reduced motion, switch instantly.
+		const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		if (document.startViewTransition && !reduceMotion) document.startViewTransition(swap);
+		else swap();
+		try {
+			if (dark) localStorage.removeItem('theme');
+			else localStorage.setItem('theme', 'light');
+		} catch {
+			// storage blocked: the choice just won't be remembered
+		}
+	}
+
+	// The background keeps its dither off these (plus a margin).
+	let heroEl = $state<HTMLElement>();
+	let mainEl = $state<HTMLElement>();
+	// Butterflies can land on the portrait's top edge.
+	let portraitEl = $state<HTMLElement>();
+
+	// The page opens on a blank ground while the background's dither closes in from the
+	// edges; the content fades in once that's done and the fonts are ready (or have had a
+	// moment longer), so it never flashes in unstyled.
+	let revealed = $state(false);
+	async function showContent() {
+		await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 1500))]);
+		revealed = true;
+	}
+
+	// Phones (the CSS's 700px breakpoint) get just the butterflies: no dithered plasma,
+	// and so no intro waiting for it to close in.
+	let phone = $state(false);
+	onMount(() => {
+		const mq = window.matchMedia('(max-width: 700px)');
+		const update = () => (phone = mq.matches);
+		update();
+		mq.addEventListener('change', update);
+		return () => mq.removeEventListener('change', update);
+	});
 
  
 	 
-	// ── Synthesised audio: menu SFX + chiptune background loop (no files) ──
-	let soundOn = $state(true);
-	let musicOn = $state(false);
+	// ── Synthesised audio: menu SFX ──
 	let audioCtx: AudioContext | null = null;
 	function getCtx(): AudioContext | null {
 		const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -104,134 +143,150 @@
 		osc.start(t);
 		osc.stop(t + dur);
 	}
-	// Shared level so the menu SFX sit at the same loudness as the music.
+	// Shared loudness for the SFX and song previews.
 	const AUDIO_VOL = 0.25;
-	// Cursor-move tick on hover; two-note "confirm" rise on select.
-	const moveSound = () => soundOn && voice(740, 0.03, AUDIO_VOL);
-	const selectSound = () => {
-		if (!soundOn) return;
-		voice(660, 0.06, AUDIO_VOL);
-		voice(990, 0.08, AUDIO_VOL, 'square', 0.055);
-	};
 	// Soft two-note rise played when a section first scrolls into view.
 	const discoverSound = () => {
-		if (!soundOn) return;
 		voice(523.25, 0.09, AUDIO_VOL * 0.55, 'triangle');
 		voice(783.99, 0.13, AUDIO_VOL * 0.55, 'triangle', 0.07);
 	};
 
-	// Background music: Kubbi — Spirit Dancer (credit at the foot of the page).
-	let musicEl: HTMLAudioElement | null = null;
-	$effect(() => {
-		const el = musicEl;
-		if (!el) return;
-		el.volume = AUDIO_VOL;
-		if (musicOn) el.play().catch(() => (musicOn = false));
-		else el.pause();
-	});
-
 	onMount(() => {
-		const sel = 'a, button, .mission, .slot';
-		let last: Element | null = null;
-		const over = (e: PointerEvent) => {
-			const el = (e.target as Element)?.closest?.(sel);
-			if (el && el !== last) {
-				last = el;
-				moveSound();
-			} else if (!el) {
-				last = null;
-			}
-		};
-		const click = (e: MouseEvent) => {
-			if ((e.target as Element)?.closest?.(sel)) selectSound();
-		};
 		// Browsers keep audio suspended until a real gesture (hover doesn't count),
 		// so prime the context on the first pointer/key press anywhere.
 		const unlock = () => getCtx();
 		window.addEventListener('pointerdown', unlock, { once: true });
 		window.addEventListener('keydown', unlock, { once: true });
-
-		document.addEventListener('pointerover', over);
-		document.addEventListener('click', click);
 		return () => {
 			window.removeEventListener('pointerdown', unlock);
 			window.removeEventListener('keydown', unlock);
-			document.removeEventListener('pointerover', over);
-			document.removeEventListener('click', click);
 		};
 	});
 
-	// Animated ordered-dither (Bayer) plasma, drawn faintly behind everything.
-	let bg!: HTMLCanvasElement;
-	onMount(() => {
-		const ctx = bg.getContext('2d')!;
-		const PIXEL = 4; // on-screen size of each dither cell
-		const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-
-		let cols = 0;
-		let rows = 0;
-		let img: ImageData;
-		let raf = 0;
-		const start = performance.now();
-
-		function resize() {
-			cols = Math.max(1, Math.ceil(window.innerWidth / PIXEL));
-			rows = Math.max(1, Math.ceil(window.innerHeight / PIXEL));
-			bg.width = cols;
-			bg.height = rows;
-			img = ctx.createImageData(cols, rows);
-		}
-
-		function frame(now: number) {
-			const t = (now - start) / 1000;
-			const data = img.data;
-			for (let y = 0; y < rows; y++) {
-				for (let x = 0; x < cols; x++) {
-					// Moving plasma field, summed sines -> normalised 0..1.
-					const s =
-						Math.sin(x * 0.025 + t * 0.4) +
-						Math.sin(y * 0.022 - t * 0.3) +
-						Math.sin((x + y) * 0.016 + t * 0.2);
-					const v = (s + 3) / 6;
-					const thr = (bayer[(y & 3) * 4 + (x & 3)] + 0.5) / 16;
-					// inverted for dark mode
-					const on = v > thr !== true ? 0 : 255;
-					const i = (y * cols + x) * 4;
-					data[i] = data[i + 1] = data[i + 2] = on;
-					data[i + 3] = 255;
-				}
-			}
-			ctx.putImageData(img, 0, 0);
-			raf = requestAnimationFrame(frame);
-		}
-
-		resize();
-		window.addEventListener('resize', resize);
-		raf = requestAnimationFrame(frame);
-
-		return () => {
-			cancelAnimationFrame(raf);
-			window.removeEventListener('resize', resize);
-		};
-	});
-
-	const build = {
-		class: 'Euan Ripper',
-		title: 'Programmer, Builder, Outdoorsy Nerd'
-	};
 	// ── Personality recommendations ──────────────────────────────────────────
-	// Favorite songs (linked to a Spotify search); visitors can suggest one back.
-	const songs = [
-		{ title: 'Creature', artist: 'half·alive' },
-		{ title: 'Nobody', artist: 'Hozier' },
-		{ title: 'Ankles', artist: 'Lucy Dacus' },
-		{ title: 'Banana Pancakes', artist: 'Jack Johnson' },
-		{ title: 'Fade Into You', artist: 'Mazzy Star' },
-		{ title: 'Angry Young Man', artist: 'Billy Joel' },
-		{ title: 'First Love / Late Spring', artist: 'Mitski' }
-	];
+	// Favorite songs (from $lib/content) link to a Spotify search; visitors can suggest one back.
 	const songSearch = (s: { title: string; artist: string }) =>
 		`https://open.spotify.com/search/${encodeURIComponent(`${s.title} ${s.artist}`)}`;
+
+	// Each song has a small play/pause button for its 30s preview clip. Clip URLs are
+	// looked up via /api/preview (iTunes previews) and cached per song; one shared
+	// <audio> element plays them, fading in and out.
+	const PREVIEW_FADE_MS = 350;
+	let previewEl = $state<HTMLAudioElement | null>(null);
+	let previewing = $state<string | null>(null); // title of the song playing (or starting)
+	let noPreview = $state<string[]>([]); // songs that turned out to have no clip
+	let previewFailed = $state<string | null>(null); // song whose clip couldn't be played (tap to retry)
+	const previewUrls = new Map<string, Promise<string | null | undefined>>();
+	const resolvedUrls = new Map<string, string | null>(); // settled lookups, to start within the tap
+	let previewToken = 0; // bumps on every play/pause so stale lookups bail
+	let fadeRaf = 0;
+
+	// Resolves to the clip URL, null when there's genuinely no clip, or undefined when the
+	// lookup itself failed (forgotten, so the next tap tries again).
+	const previewUrl = (s: { title: string; artist: string }) => {
+		let p = previewUrls.get(s.title);
+		if (!p) {
+			const q = new URLSearchParams({ title: s.title, artist: s.artist });
+			p = fetch(`/api/preview?${q}`)
+				.then((r) => (r.ok ? r.json() : Promise.reject(new Error(`preview lookup HTTP ${r.status}`))))
+				.then((d: { url: string | null }) => {
+					resolvedUrls.set(s.title, d.url);
+					return d.url;
+				})
+				.catch((err) => {
+					console.warn('[preview] lookup failed:', s.title, err);
+					previewUrls.delete(s.title);
+					return undefined;
+				});
+			previewUrls.set(s.title, p);
+		}
+		return p;
+	};
+
+	// Look the clips up once the list is nearly on screen, so a tap can start one at once.
+	function prefetchPreviews(node: HTMLElement) {
+		const io = new IntersectionObserver(
+			(entries) => {
+				if (!entries.some((e) => e.isIntersecting)) return;
+				io.disconnect();
+				for (const s of songs) previewUrl(s);
+			},
+			{ rootMargin: '300px 0px' }
+		);
+		io.observe(node);
+		return { destroy: () => io.disconnect() };
+	}
+
+	function fadeTo(target: number, done?: () => void) {
+		const el = previewEl;
+		if (!el) return;
+		cancelAnimationFrame(fadeRaf);
+		const from = el.volume;
+		const start = performance.now();
+		const step = (now: number) => {
+			const t = Math.min(1, (now - start) / PREVIEW_FADE_MS);
+			el.volume = from + (target - from) * t;
+			if (t < 1) fadeRaf = requestAnimationFrame(step);
+			else done?.();
+		};
+		fadeRaf = requestAnimationFrame(step);
+	}
+
+	// Show that a clip couldn't play (rather than silently flipping back), so a tap can retry.
+	function failPreview(title: string) {
+		previewing = null;
+		previewFailed = title;
+	}
+
+	function togglePreview(s: { title: string; artist: string; start?: number }) {
+		if (previewing === s.title) stopPreview();
+		else playPreview(s);
+	}
+
+	async function playPreview(s: { title: string; artist: string; start?: number }) {
+		const el = previewEl;
+		if (!el) return;
+		const token = ++previewToken;
+		previewing = s.title; // show the pause button straight away
+		previewFailed = null;
+		// Phones only play audio started from the tap itself, so when the clip is already
+		// known, start it before anything is awaited; otherwise look it up first.
+		const url = resolvedUrls.has(s.title) ? (resolvedUrls.get(s.title) ?? null) : await previewUrl(s);
+		if (token !== previewToken) return;
+		if (url === null) {
+			previewing = null;
+			noPreview = [...noPreview, s.title];
+			return;
+		}
+		if (url === undefined) return failPreview(s.title);
+		// Skip the intro a little so the clip starts closer to the good bit. The same song
+		// again resumes where it was paused (or starts over if it had finished).
+		const from = s.start ?? 5;
+		const src = `${url}#t=${from}`;
+		if (el.src !== src) el.src = src;
+		else if (el.ended) el.currentTime = from;
+		cancelAnimationFrame(fadeRaf);
+		el.volume = 0;
+		try {
+			await el.play();
+		} catch (err) {
+			console.warn('[preview] could not play:', s.title, err);
+			if (token === previewToken) failPreview(s.title); // blocked, or the clip failed to load
+			return;
+		}
+		if (token !== previewToken) return;
+		fadeTo(AUDIO_VOL * 2);
+	}
+
+	function stopPreview() {
+		++previewToken;
+		previewing = null;
+		const el = previewEl;
+		if (!el || el.paused) return;
+		const token = previewToken;
+		fadeTo(0, () => token === previewToken && el.pause());
+	}
+
 	// Visitors can suggest a song; it's POSTed to /api/suggest → Neon Postgres.
 	let suggestSong = $state('');
 	let suggestName = $state('');
@@ -256,21 +311,6 @@
 			suggestState = 'error';
 		}
 	}
-
-
-	// Tools in the "inventory". Most logos come from the Simple Icons CDN (by
-	// slug); a couple use self-hosted full-colour SVGs via `src`.
-	const inventory = [
-		{ name: 'Svelte', slug: 'svelte' },
-		{ name: 'PostgreSQL', slug: 'postgresql' },
-		{ name: 'Airtable', src: '/images/airtable.svg' },
-		{ name: 'Python', src: '/images/python.svg' },
-		{ name: 'JavaScript', slug: 'javascript' },
-		{ name: 'Metabase', slug: 'metabase' },
-		{ name: 'NestJS', slug: 'nestjs' },
-		{ name: 'Fusion 360', src: '/images/fusion360.svg' }
-	];
-
 
 
 	// Adds `.hovering` on pointer enter and removes it `delay` ms after leave, so
@@ -333,48 +373,59 @@
 		};
 	}
 
-	// Character level = full years since 26 Nov 2006.
-	function yearsSince(year: number, month: number, day: number): number {
-		const now = new Date();
-		let y = now.getFullYear() - year;
-		const m = now.getMonth() - (month - 1);
-		if (m < 0 || (m === 0 && now.getDate() < day)) y--;
-		return y;
-	}
-	const level = yearsSince(2006, 11, 26);
+	// ── Scroll trail: an arrow drawn from under the hero into the fun facts ──
+	// The tail is pinned under the hero text. At the top it's a short straight arrow; as
+	// the page scrolls, the head travels along the path until it lands. The path's shape
+	// is TRAIL_PATH in $lib/scroll-trail, designed with the editor at /arrow-editor.
+	let heroBodyEl = $state<HTMLElement>();
+	let factsTextEl = $state<HTMLElement>();
+	let trail = $state<{ d: string; hx: number; hy: number; angle: number; w: number; h: number } | null>(null);
 
-	// Fraction (0–100) of the current year of age elapsed, for the XP bar.
-	function ageProgress(month: number, day: number): number {
-		const now = new Date();
-		let last = new Date(now.getFullYear(), month - 1, day);
-		if (now < last) last = new Date(now.getFullYear() - 1, month - 1, day);
-		const next = new Date(last.getFullYear() + 1, month - 1, day);
-		return Math.min(100, Math.max(0, ((+now - +last) / (+next - +last)) * 100));
-	}
-	const agePct = Math.round(ageProgress(11, 26));
-	let xp = $state(0);
 	onMount(() => {
-		xp = agePct;
+		if (editArrow) return; // the editor draws its own arrow
+		let frame: TrailFrame | null = null;
+		let pts: Pt[] = []; // path samples, evenly spaced along it
+		let finish = 1; // scroll distance over which the head travels the path
+		let dirty = true;
+		let raf = 0;
+
+		const draw = () => {
+			if (dirty) {
+				dirty = false;
+				frame = heroBodyEl && factsTextEl ? measureTrail(heroBodyEl, factsTextEl) : null;
+				pts = frame ? sampleTrail(frame, TRAIL_PATH) : [];
+				finish = frame ? trailFinish(frame, pts) : 1;
+			}
+			if (!frame || pts.length < 2) {
+				trail = null;
+				return;
+			}
+			const head = trailHead(pts, window.scrollY, finish);
+			trail = { ...head, w: frame.w, h: Math.max(...pts.map((p) => p.y)) + 40 };
+		};
+
+		const schedule = () => {
+			cancelAnimationFrame(raf);
+			raf = requestAnimationFrame(draw);
+		};
+		const relayout = () => {
+			dirty = true;
+			schedule();
+		};
+		const ro = new ResizeObserver(relayout);
+		ro.observe(document.body);
+		window.addEventListener('scroll', schedule, { passive: true });
+		window.addEventListener('resize', relayout); // viewport height feeds `finish`
+		document.fonts.ready.then(relayout);
+		return () => {
+			cancelAnimationFrame(raf);
+			ro.disconnect();
+			window.removeEventListener('scroll', schedule);
+			window.removeEventListener('resize', relayout);
+		};
 	});
-	// Terminal-style block gauge: fixed run of cells, filled in left-to-right.
-	const XP_CELLS = 60;
-	const xpFilled = $derived(Math.round((xp / 100) * XP_CELLS));
 
-	// Right-hand character panel is split into tabs.
-	const statTabs = [
-		{ id: 'personality', label: 'PERSONALITY' },
-		{ id: 'stats', label: 'STATS' },
-		{ id: 'story', label: 'STORY' }
-		
-	] as const;
-	let statTab = $state<(typeof statTabs)[number]['id']>('personality');
-
-	// Story paragraphs, rendered with animated plane dividers between them.
-	const storyParas = [
-		`Started programming at 16 to automate his very boring warehouse job, and got hooked on the intersection of maths and art — using code as a tool to explore it. He quickly realised that no community of makers existed in his area of rural England, so he started one. He taught a class, won a competition and was offered a $50,000 fellowship with Hack Club. At 18, he moved to America to build the future of technical education for teens.`,
-		`Over that year in America he ran hackathons with the creators that first showed him coding, travelled all across America and Europe to mentor at events, and got teens to program for 10,000 hours — tracked using Hackatime.`,
-		`Soon though, Euan will fly the other way. Home to England to study Mechatronics and Robotics Engineering at Loughborough. We are yet to see where that will go...`
-	];
+	// Story paragraphs (from $lib/content), rendered with animated plane dividers between them.
 	// Both divider planes cross at the same pace — the reading time of the first
 	// (top) paragraph at an average adult reading speed.
 	const STORY_WPM = 230;
@@ -458,417 +509,339 @@
 		}
 	});
 
-	type Status = 'COMPLETE' | 'IN PROGRESS';
-	type Mission = {
-		name: string;
-		status: Status | 'OPEN';
-		brief: string;
-		href?: string;
-		image?: string;
-		contain?: boolean;
-	};
-
-	const missions: Mission[] = [
-		{
-			name: 'Hack Club Fellowship',
-			status: 'COMPLETE',
-			brief:
-				'Move across the world at 18 to spend a year scaling the mission of Hack Club — building programs and running events that inspire thousands of teens to learn coding.',
-			href: '/blog/hack-club-fellowship',
-			image: '/images/fellowship.png'
-		},
-		{
-			name: 'StrandBeest',
-			status: 'IN PROGRESS',
-			brief:
-				'Design, manufacture and build a mechanical walking sculpture, and meet the inspiration Theo Jansen.',
-			href: '/blog/strandbeest',
-			image: '/images/strandbeest.png'
-		},
-		{
-			name: 'Beest Hackathon',
-			status: 'IN PROGRESS',
-			brief:
-				'Convince 30 teens to fly to the Netherlands to watch the StrandBeest exhibition.',
-			href: '/blog/beest-hackathon',
-			image: '/images/beest-hackathon.png'
-		},
-		{
-			name: 'You Ship, We Ship',
-			status: 'IN PROGRESS',
-			brief:
-				'Create and execute programs that reward teens for building personal projects. Goal: 10,000 hours of tracked learning.',
-			href: '/blog/you-ship-we-ship',
-			image: '/images/you-ship-we-ship.png'
-		},
-		{
-			name: 'Flagship Hackathon',
-			status: 'COMPLETE',
-			brief:
-				'Get 10 of the biggest technical YouTubers together for a game jam in LA.',
-			href: '/blog/flagship-hackathon',
-			image: '/images/flagship-hackathon.png'
-		},
-		{
-			name: 'Stickers',
-			status: 'IN PROGRESS',
-			brief:
-				'Build a platform to track historical sticker designs by Hack Club — starting as an internal tool and becoming a full-fledged distribution platform.',
-			href: '/blog/stickers',
-			image: '/images/sticker.png',
-			contain: true
-		},
-		{
-			name: 'Create a coding club, win a competition!',
-			status: 'COMPLETE',
-			brief:
-				'Start teaching kids coding from 0 — raise your own budget, beat the well-funded schools.',
-			href: '/blog/coding-club',
-			image: '/images/coding-club.png'
-		},
-		{
-			name: 'New Mission',
-			status: 'OPEN',
-			brief: 'Want to work on another mission with me? Reach out with your pitch — euanripper2@gmail.com',
-			href: 'mailto:euanripper2@gmail.com'
-		}
-	];
-
-	type Sidequest = { name: string; href: string; brief?: string; image?: string };
-
-	const sidequests: Sidequest[] = [
-		{
-			name: 'Learn to unicycle',
-			brief:
-				'Over lockdown you find yourself with a lot of time, a lot of boredom, and a rusty old unicycle in the back of a shed...',
-			href: '/blog/learn-to-unicycle',
-			image: '/images/unicycle.png'
-		},
-		{
-			name: 'Hike 55 miles with the British Army',
-			brief:
-				"Over 3 years, take on progressively harder hikes, culminating in leading a team of 6 across 55 miles through 10 checkpoints for the army's Ten Tors challenge.",
-			href: '/blog/hike-55-miles-british-army',
-			image: '/images/hike-army.jpg'
-		},
-		{
-			name: 'Attend Hackathons',
-			brief:
-				'I love being in a technical community, and the best way to meet people is at hackathons — fortunately my work runs a lot of them!',
-			href: '/blog/attend-hackathons',
-			image: '/images/headshot.png'
-		},
-		{
-			name: 'Run an ultramarathon',
-			brief:
-				"Go from couch potato to ultramarathon runner — run across a national park to complete the quest. Time doesn't matter, finishing matters!",
-			href: '/blog/run-an-ultramarathon',
-			image: '/images/ultramarathon.webp'
-		},
-		{
-			name: 'Learn how differential equations govern the spots and stripes on fish.',
-			brief:
-				'Build a visualisation of Turing\'s "The chemical basis of morphogenesis" paper using Python to simulate why some animals get spots and others stripes.',
-			href: '/blog/turing-patterns',
-			image: '/images/fish.png'
-		},
-		{
-			name: 'Speak at the European Parliament in Strasbourg',
-			brief: 'Convince the European Parliament to let your school visit, even after Brexit...',
-			href: '/blog/european-parliament',
-			image: '/images/european-parliament.webp'
-		}
-	];
 </script>
 
 <svelte:head>
-	<title>Euan's Website</title>
+	<!-- Without scripts there's no intro to wait for: show the content (and underlines) as-is. -->
+	<noscript>
+		<style>
+			.veiled { opacity: 1 !important; }
+			.hero-line::after { transform: none !important; }
+		</style>
+	</noscript>
 </svelte:head>
 
-<canvas class="bg" bind:this={bg} aria-hidden="true"></canvas>
+<Seo title={HOME_TITLE} description={HOME_DESCRIPTION} path="/" type="profile" jsonLd={homeJsonLd()} />
 
-<main class="screen">
-	<header class="topbar">
-		<h1>Selected Character: Euan Shipper</h1>
-		<div class="controls">
+<!-- Dithered plasma background with butterflies drawn into it. It fades to the
+     plain ground around the hero block and the main content column. -->
+<DitherButterflies
+	{dark}
+	plasma={!phone}
+	opacity={dark ? 0.08 : 0.2}
+	count={9}
+	clearEls={[heroEl, mainEl]}
+	clearPad={40}
+	clearRadius={100}
+	clearFloor={dark ? 0.15 : 0.03}
+	perchEls={phone ? [] : [portraitEl]}
+	intro={phone ? 0 : 3000}
+	onready={showContent}
+	fade={220}
+/>
+
+<!-- ── Hero: the first screen; everything else is a scroll away. Sits outside
+     <main> so the background can close in around it. ── -->
+<section class="hero" class:veiled={!revealed} class:shown={revealed}>
+	<div class="corner-toggles">
 		<button
-			class="toggle"
-			class:active={musicOn}
-			onclick={() => (musicOn = !musicOn)}
-			aria-label={musicOn ? 'Stop background music' : 'Play background music'}
-			aria-pressed={musicOn}
-			title={musicOn ? 'Stop music' : 'Play music'}
+			class="corner-toggle"
+			type="button"
+			onclick={toggleTheme}
+			aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+			title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
 		>
-			{#if musicOn}
-				<!-- music playing -->
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<path d="M9 18V5l12-2v13" />
-					<circle cx="6" cy="18" r="3" />
-					<circle cx="18" cy="16" r="3" />
+			{#if dark}
+				<!-- sun: switch to light -->
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+					<circle cx="12" cy="12" r="4" />
+					<path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
 				</svg>
 			{:else}
-				<!-- music off (slashed note) -->
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<path d="M9 18V5l12-2v13" />
-					<circle cx="6" cy="18" r="3" />
-					<circle cx="18" cy="16" r="3" />
-					<line x1="3" y1="3" x2="21" y2="21" />
+				<!-- moon: switch to dark -->
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+					<path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a6.8 6.8 0 0 0 10.7 10.7z" />
 				</svg>
 			{/if}
 		</button>
-		<button
-			class="toggle"
-			class:active={soundOn}
-			onclick={() => (soundOn = !soundOn)}
-			aria-label={soundOn ? 'Mute sound effects' : 'Unmute sound effects'}
-			aria-pressed={soundOn}
-			title={soundOn ? 'Mute sound effects' : 'Unmute sound effects'}
-		>
-			{#if soundOn}
-				<!-- speaker on -->
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<path d="M11 5 6 9H2v6h4l5 4z" />
-					<path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
-				</svg>
-			{:else}
-				<!-- speaker muted -->
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<path d="M11 5 6 9H2v6h4l5 4z" />
-					<line x1="23" y1="9" x2="17" y2="15" />
-					<line x1="17" y1="9" x2="23" y2="15" />
-				</svg>
-			{/if}
-		</button>
-
+	</div>
+	<div class="hero-inner" bind:this={heroEl}>
+		<div class="hero-heading">
+			<p class="hero-title"><span class="hero-line">Welcome</span><br /><span class="hero-line">to my space</span></p>
+			<h1 class="hero-name">Euan Ripper</h1>
 		</div>
-	</header>
-
-	<div class="layout">
-		<!-- ── Character model (placeholder) ── -->
-		<section class="panel stage">
-			<div class="stage-half model-half">
-				<div class="class-tag">
-					<div>
-						<h2>{build.class}</h2>
-						<p>{build.title}</p>
-					</div>
-					<div class="socials">
-						<a href="https://github.com/edRipper" target="_blank" rel="noopener noreferrer" aria-label="GitHub" title="GitHub — my code & projects">
-							<img class="mono" src="https://cdn.simpleicons.org/github" alt="GitHub" />
-						</a>
-						<a href="https://www.linkedin.com/in/euan-ripper-ab876528b/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" title="LinkedIn — my work & experience">
-							<img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg" alt="LinkedIn" />
-						</a>
-						<a href="https://www.instagram.com/euanripper/" target="_blank" rel="noopener noreferrer" aria-label="Instagram" title="Instagram — my photos & life">
-							<img class="mono" src="https://cdn.simpleicons.org/instagram" alt="Instagram" />
-						</a>
-					</div>
-				</div>
-				<div class="model" class:light={!dark}>
-
-					<canvas
-						class="model-ascii"
-						bind:this={asciiCanvas}
-						aria-label="ASCII portrait of Euan Ripper"
-					></canvas>
-					<span class="photo-credit">photo credit: reem &lt;3</span>
-				</div>
+		<div class="model" bind:this={portraitEl}>
+			<canvas
+				class="model-ascii"
+				bind:this={asciiCanvas}
+				aria-label="ASCII portrait of Euan Ripper"
+			></canvas>
+			<span class="photo-credit">photo credit: reem &lt;3</span>
+		</div>
+		<div class="hero-body" bind:this={heroBodyEl}>
+			<p class="hero-sub">
+				I'm an outdoorsy nerd, I like circus arts, robotics, and organising events for creatives
+			</p>
+			<div class="socials hero-socials">
+				<a href="https://github.com/edRipper" target="_blank" rel="noopener noreferrer" aria-label="GitHub" title="GitHub — my code & projects">
+					<img class="mono" src="https://cdn.simpleicons.org/github" alt="GitHub" />
+				</a>
+				<a href="https://www.linkedin.com/in/euan-ripper-ab876528b/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" title="LinkedIn — my work & experience">
+					<img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg" alt="LinkedIn" />
+				</a>
+				<a href="https://www.instagram.com/euanripper/" target="_blank" rel="noopener noreferrer" aria-label="Instagram" title="Instagram — my photos & life">
+					<img src="https://cdn.simpleicons.org/instagram/833AB4" alt="Instagram" />
+				</a>
+				<a href={mailHref} aria-label="Email" title="Email — say hi">
+					<svg class="mail" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+						<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z" />
+					</svg>
+				</a>
 			</div>
+		</div>
+	</div>
+</section>
 
-			<div class="stage-half stats-half">
-				<div class="sub tabs-head">
-					<div class="tabs" role="tablist" aria-label="Character details">
-						{#each statTabs as t (t.id)}
-							<button
-								class="tab"
-								class:active={statTab === t.id}
-								role="tab"
-								aria-selected={statTab === t.id}
-								onclick={() => (statTab = t.id)}
-							>
-								{t.label}
-							</button>
-						{/each}
-					</div>
-					<a class="stats-email" href="mailto:euanripper2@gmail.com">euanripper2@gmail.com</a>
-				</div>
+<!-- Scroll trail from the hero down to the fun facts (see the trail logic above). -->
+{#if editArrow}
+	<ArrowEditor {heroBodyEl} {factsTextEl} />
+{:else if trail}
+	<svg
+		class="scroll-trail"
+		class:veiled={!revealed}
+		class:shown={revealed}
+		width={trail.w}
+		height={trail.h}
+		aria-hidden="true"
+	>
+		<path class="trail-line" d={trail.d} />
+		<path
+			class="trail-head"
+			d="M-13 -15 L0 0 L13 -15"
+			transform="translate({trail.hx} {trail.hy}) rotate({trail.angle})"
+		/>
+	</svg>
+{/if}
 
-				<div class="tab-panel" role="tabpanel">
-					{#if statTab === 'stats'}
-						<div class="stat-row">
-							<span class="lvl-badge">Level {level}</span>
-							<div
-								class="xp-bar"
-								role="progressbar"
-								aria-valuenow={agePct}
-								aria-valuemin="0"
-								aria-valuemax="100"
-							>
-								<span class="xp-brk">[</span><!--
-								-->{#each { length: XP_CELLS } as _, i}<span
-										class="xp-cell"
-										class:on={i < xpFilled}>{i < xpFilled ? '█' : '░'}</span
-									>{/each}<!--
-								--><span class="xp-brk">]</span>
-							</div>
-							<span class="location">LOCATION: VERMONT</span>
-						</div>
-						<div class="xp">
-							<span class="xp-label">{agePct}% through Level {level} → {level + 1}</span>
-						</div>
+<main class="screen" class:veiled={!revealed} class:shown={revealed} bind:this={mainEl}>
+	<!-- Phones only: marks where the first screen ends and the rest begins. -->
+	<hr class="fold-divider" />
+	<div class="class-tag">
+		<div>
+			<h2>Fun facts</h2>
+			<p bind:this={factsTextEl}>{funFacts}</p>
+		</div>
+	</div>
 
-						{#if coding}
-							<dl class="telemetry">
-								<div class="telem-line">
-									<dt>CODING TIME</dt>
-									<dd>{coding.total}</dd>
-								</div>
-								{#if coding.streak > 2}
-									<div class="telem-line">
-										<dt>STREAK</dt>
-										<dd class="streak">
-											<img class="fire" src="/images/fire.gif" alt="" aria-hidden="true" />
-											{coding.streak} days
-										</dd>
-									</div>
-								{/if}
-							</dl>
-							{#if coding.langs.length}
-								<div class="lang-breakdown">
-									<div
-										class="pie"
-										style="background: {pieGradient(coding.langs)}"
-										role="img"
-										aria-label="Top languages by coding time"
-									></div>
-									<ul class="legend">
-										{#each coding.langs as l (l.name)}
-											<li>
-												<span class="swatch" style="background: {l.color}"></span>
-												<span class="lname">{l.name}</span>
-												<span class="pct">{Math.round(l.percent)}%</span>
-											</li>
-										{/each}
-									</ul>
-									{#if coding.projects.length}
-										<nav class="projects" aria-label="Top projects">
-											<span class="projects-head">TOP PROJECTS ↗</span>
-											{#each coding.projects as p (p.name)}
-												<a
-													class="proj"
-													href={p.href}
-													target="_blank"
-													rel="noopener noreferrer"
-												>
-													<span class="pname">{p.name}</span>
-													<span class="ptime">{p.text}</span>
-												</a>
-											{/each}
-										</nav>
-									{/if}
-								</div>
-							{/if}
-						{:else if codingErr}
-							<p class="telem-err">⚠ Hackatime is down or pushed breaking changes {codingErr}</p>
-						{/if}
-
-						<a class="chart" href="https://github.com/edRipper" target="_blank" rel="noopener noreferrer">
-							<img
-								src="https://ghchart.rshah.org/39d353/edRipper"
-								alt="GitHub commit history for edRipper"
-								loading="lazy"
-							/>
-						</a>
-
-						<h3 class="sub inv-head">Inventory / Tools</h3>
-						<div class="inventory">
-							{#each inventory as item (item.name)}
-								<span class="slot" title={item.name}>
-									<img
-										src={item.src ?? `https://cdn.simpleicons.org/${item.slug}`}
-										alt={item.name}
-										loading="lazy"
-									/>
-								</span>
-							{/each}
-						</div>
-					{:else if statTab === 'story'}
-						{#each storyParas as para, i (i)}
-							{#if i > 0}
-								<div class="flight {i % 2 === 0 ? 'rev' : ''}" aria-hidden="true">
-									<span
-										class="flight-plane"
-										style="animation-duration: {readMs(storyParas[0])}ms"
-									>✈︎</span>
-								</div>
-							{/if}
-							<p class="bio">{para}</p>
-						{/each}
-					{:else}
-						<p class="likes">LIKES: circus arts, robotics, web dev, hackathons</p>
-
-						<h3 class="sub rec-head">My favorite songs:</h3>
-						<ol class="song-list">
-							{#each songs as s (s.title)}
-								<li>
-									<span class="note">♫</span>
-									<a href={songSearch(s)} target="_blank" rel="noopener noreferrer">
-										{s.title} · {s.artist}
-									</a>
-								</li>
-							{/each}
-						</ol>
-						{#if suggestState === 'done'}
-							<p class="suggest-done">thank you &lt;3, I will give it a listen!</p>
+	<!-- ── Personality ── -->
+	<section class="panel personality">
+		<h3 class="sub rec-head">My favorite songs:</h3>
+		<ol class="song-list" use:prefetchPreviews>
+			{#each songs as s (s.title)}
+				{@const playing = previewing === s.title}
+				{@const unavailable = noPreview.includes(s.title)}
+				<li class:playing>
+					<button
+						class="play"
+						type="button"
+						onclick={() => togglePreview(s)}
+						disabled={unavailable}
+						aria-pressed={playing}
+						aria-label="Preview {s.title} by {s.artist}"
+						class:failed={previewFailed === s.title}
+						title={unavailable
+							? 'No preview available'
+							: previewFailed === s.title
+								? "Couldn't play the preview, tap to try again"
+								: playing
+									? 'Pause'
+									: 'Play a preview'}
+					>
+						{#if playing}
+							<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1.5" width="3" height="9" /><rect x="7" y="1.5" width="3" height="9" /></svg>
 						{:else}
-							<form class="song-suggest" onsubmit={submitSuggestion}>
-								<label class="suggest-label" for="suggest-song">know a song i might like?</label>
-								<div class="suggest-row">
-									<input
-										id="suggest-song"
-										type="text"
-										bind:value={suggestSong}
-										maxlength="200"
-										placeholder="song — artist"
-										required
-									/>
-									<input
-										class="suggest-name"
-										type="text"
-										bind:value={suggestName}
-										maxlength="80"
-										placeholder="you (optional)"
-									/>
-									<input
-										class="hp"
-										type="text"
-										tabindex="-1"
-										autocomplete="off"
-										bind:value={suggestHoney}
-										aria-hidden="true"
-									/>
-									<button type="submit" disabled={suggestState === 'sending'}>
-										{suggestState === 'sending' ? '…' : 'send'}
-									</button>
-								</div>
-								{#if suggestState === 'error'}
-									<span class="suggest-err">couldn’t send — try again</span>
-								{/if}
-							</form>
+							<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.5v9l7.5-4.5z" /></svg>
 						{/if}
+					</button>
+					<a href={songSearch(s)} target="_blank" rel="noopener noreferrer">
+						{s.title} · {s.artist}
+					</a>
+					{#if playing}
+						<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+					{/if}
+				</li>
+			{/each}
+		</ol>
+		{#if previewFailed}
+			<p class="preview-err" role="status">couldn’t play that preview, tap ▶ to try again</p>
+		{/if}
+		<audio
+			bind:this={previewEl}
+			preload="none"
+			onended={() => (previewing = null)}
+			onerror={() => previewing && failPreview(previewing)}
+		></audio>
+		{#if suggestState === 'done'}
+			<p class="suggest-done">
+				thank you &lt;3, I will give it a listen!
+				<button type="button" class="suggest-again" onclick={() => (suggestState = 'idle')}>
+					suggest another
+				</button>
+			</p>
+		{:else}
+			<form class="song-suggest" onsubmit={submitSuggestion}>
+				<label class="suggest-label" for="suggest-song">know a song i might like?</label>
+				<div class="suggest-row">
+					<input
+						id="suggest-song"
+						type="text"
+						bind:value={suggestSong}
+						maxlength="200"
+						placeholder="song — artist"
+						required
+					/>
+					<input
+						class="suggest-name"
+						type="text"
+						bind:value={suggestName}
+						maxlength="80"
+						placeholder="you (optional)"
+					/>
+					<input
+						class="hp"
+						type="text"
+						tabindex="-1"
+						autocomplete="off"
+						bind:value={suggestHoney}
+						aria-hidden="true"
+					/>
+					<button type="submit" disabled={suggestState === 'sending'}>
+						{suggestState === 'sending' ? '…' : 'send'}
+					</button>
+				</div>
+				{#if suggestState === 'error'}
+					<span class="suggest-err">couldn’t send — try again</span>
+				{/if}
+			</form>
+		{/if}
+	</section>
 
+	<!-- ── Stats ── -->
+	<div class="section-head" use:reveal={{ sound: true }}>
+		<span class="line"></span>
+		<span class="arrow-stream" aria-hidden="true"></span>
+		<h2>
+			Coding stats from <a href="https://hackatime.hackclub.com" target="_blank" rel="noopener noreferrer">hackatime</a>
+		</h2>
+		<span class="arrow-stream" aria-hidden="true"></span>
+		<span class="line"></span>
+	</div>
+	<section class="panel stats">
+		{#if coding}
+			<dl class="telemetry">
+				<div class="telem-line">
+					<dt>CODING TIME</dt>
+					<dd>{coding.total}</dd>
+				</div>
+				{#if coding.streak > 2}
+					<div class="telem-line">
+						<dt>STREAK</dt>
+						<dd class="streak">
+							<img class="fire" src="/images/fire.gif" alt="" aria-hidden="true" />
+							{coding.streak} days
+						</dd>
+					</div>
+				{/if}
+			</dl>
+			{#if coding.langs.length}
+				<div class="lang-breakdown">
+					<div
+						class="pie"
+						style="background: {pieGradient(coding.langs)}"
+						role="img"
+						aria-label="Top languages by coding time"
+					></div>
+					<ul class="legend">
+						{#each coding.langs as l (l.name)}
+							<li>
+								<span class="swatch" style="background: {l.color}"></span>
+								<span class="lname">{l.name}</span>
+								<span class="pct">{Math.round(l.percent)}%</span>
+							</li>
+						{/each}
+					</ul>
+					{#if coding.projects.length}
+						<nav class="projects" aria-label="Top projects">
+							<span class="projects-head">TOP PROJECTS ↗</span>
+							{#each coding.projects as p (p.name)}
+								<a
+									class="proj"
+									href={p.href}
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									<span class="pname">{p.name}</span>
+									<span class="ptime">{p.text}</span>
+								</a>
+							{/each}
+						</nav>
 					{/if}
 				</div>
-			</div>
-		</section>
+			{/if}
+		{:else if codingErr}
+			<p class="telem-err">⚠ Hackatime is down or pushed breaking changes {codingErr}</p>
+		{/if}
 
+		<a class="chart" href="https://github.com/edRipper" target="_blank" rel="noopener noreferrer">
+			<img
+				src="https://ghchart.rshah.org/39d353/edRipper"
+				alt="GitHub commit history for edRipper"
+				loading="lazy"
+			/>
+		</a>
+
+		<h3 class="sub inv-head">Inventory / Tools</h3>
+		<div class="inventory">
+			{#each inventory as item (item.name)}
+				<span class="slot" title={item.name}>
+					<img
+						src={item.src ?? `https://cdn.simpleicons.org/${item.slug}`}
+						alt={item.name}
+						loading="lazy"
+					/>
+				</span>
+			{/each}
+		</div>
+	</section>
+
+	<!-- ── Story ── -->
+	<div class="section-head" use:reveal={{ sound: true }}>
+		<span class="line"></span>
+		<span class="arrow-stream" aria-hidden="true"></span>
+		<h2>Story: The lore so far</h2>
+		<span class="arrow-stream" aria-hidden="true"></span>
+		<span class="line"></span>
 	</div>
+	<section class="panel story">
+		{#each storyParas as para, i (i)}
+			{#if i > 0}
+				<div class="flight {i % 2 === 0 ? 'rev' : ''}" aria-hidden="true">
+					<span
+						class="flight-plane"
+						style="animation-duration: {readMs(storyParas[0])}ms"
+					>✈︎</span>
+				</div>
+			{/if}
+			<p class="bio">{para}</p>
+		{/each}
+	</section>
+
 
 	<!-- ── Missions (projects) ── -->
 	<div class="section-head" use:reveal={{ sound: true }}>
 		<span class="line"></span>
 		<span class="arrow-stream" aria-hidden="true"></span>
-		<h2>Missions: See challenges from the profession skill tree</h2>
+		<h2>Missions</h2>
 		<span class="arrow-stream" aria-hidden="true"></span>
 		<span class="line"></span>
 	</div>
@@ -907,7 +880,7 @@
 	<div class="section-head" use:reveal={{ sound: true }}>
 		<span class="line"></span>
 		<span class="arrow-stream" aria-hidden="true"></span>
-		<h2>Sidequests: Lore building adventures on the side of main missions</h2>
+		<h2>Sidequests: Fun projects on the side</h2>
 		<span class="arrow-stream" aria-hidden="true"></span>
 		<span class="line"></span>
 	</div>
@@ -931,34 +904,25 @@
 		</div>
 	</section>
 
-	<footer class="credits">
-		<p>
-			Music: <a href="https://kubbi.bandcamp.com" target="_blank" rel="noopener noreferrer"
-				>Kubbi — Spirit Dancer</a
-			>
-		</p>
+	<footer class="contact">
+		the best way to reach me is to shoot me an email!
+		<a href="mailto:euanripper2@gmail.com">euanripper2@gmail.com</a>
 	</footer>
-
-	<audio bind:this={musicEl} src="/audio/spirit-dancer.mp3" loop preload="none"></audio>
 </main>
 
 <style>
 	:global(body) {
-		--bg: #f0ede4;
-		--panel: rgba(248, 245, 238, 0.85);
-		--border: #8f8a7e;
+		/* Light: a retro handheld-screen palette, deep green-black ink on pale sage. */
+		--bg: #e3e8d3;
+		--panel: rgba(236, 240, 224, 0.88);
+		--border: #8c977a;
 		--bw: 2px;
-		--text: #1a1814;
-		--accent: #1f9a3d; /* darker green for legibility on the light ground */
-		--shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+		--text: #1b2417; /* ~15:1 on the ground */
+		--accent: #256b2a; /* ~5.3:1, fine for small text */
+		--warn: #8a4b12; /* burnt orange, ~5.5:1 */
+		--shadow: 0 10px 30px rgba(27, 36, 23, 0.18);
 		background: var(--bg);
 		color: var(--text);
-		cursor: url('/cursors/hitbox.png') 16 16, crosshair;
-	}
-	:global(a),
-	:global(button),
-	:global(label) {
-		cursor: url('/cursors/hitbox-green.png') 16 16, pointer;
 	}
 	:global(body.dark) {
 		--bg: #131318;
@@ -966,23 +930,15 @@
 		--border: #3a3a40;
 		--text: #ece7da;
 		--accent: #39d353; /* brighter green reads better on the dark ground */
+		--warn: var(--warn);
 		--shadow: 0 12px 34px rgba(0, 0, 0, 0.6);
-	}
-
-	.bg {
-		position: fixed;
-		inset: 0;
-		width: 100vw;
-		height: 100vh;
-		display: block;
-		image-rendering: pixelated;
-		opacity: 0.14;
-		pointer-events: none;
-		z-index: -1;
 	}
 
 	.screen {
 		position: relative;
+		width: 100%;
+		max-width: 1000px; /* matches the background's clear column */
+		margin: 0 auto;
 		min-height: 100vh;
 		box-sizing: border-box;
 		padding: 1.5rem 1.5rem 4rem;
@@ -992,68 +948,155 @@
 		font-family: 'Departure Mono', ui-monospace, monospace;
 	}
 
-	.credits {
-		margin-top: 2rem;
-		text-align: center;
-		font-size: 0.8rem;
-		opacity: 0.7;
+	/* Content stays hidden until the background's intro is done (see showContent()), then
+	   fades in. The delayed animation is a fallback so it still appears if scripts never run. */
+	.veiled {
+		opacity: 0;
 	}
-	.credits a {
-		color: inherit;
+	.shown {
+		animation: fade-in 1.4s ease both;
+	}
+	@keyframes fade-in {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
 	}
 
-	.topbar {
+	/* First screen: welcome text + portrait, centred; the rest is below the fold. */
+	.hero {
+		position: relative;
+		min-height: 100vh;
+		min-height: 100svh;
+		box-sizing: border-box;
+		padding: 2rem 1.5rem 4rem;
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
-		gap: 1rem;
-		padding-bottom: 0.5rem;
+		justify-content: center;
+		font-family: 'Departure Mono', ui-monospace, monospace;
 	}
-	.topbar h1 {
-		margin: 0;
-		font-size: 1.4rem;
-		text-decoration: underline;
+	/* Title and portrait side by side, level; the intro text runs under both. */
+	.hero-inner {
+		width: 100%;
+		max-width: 1240px; /* wider than the content column below, so the hero fills more of the screen */
+		container-type: inline-size; /* lets the title size against this block */
+		display: grid;
+		/* Title column is never narrower than the title's longest word (up to 55%);
+		   the portrait takes what's left, so it can't overlap the title. */
+		grid-template-columns: fit-content(55%) minmax(0, 1fr);
+		grid-template-areas:
+			'title model'
+			'body body';
+		align-items: center;
+		gap: 2.5rem 4rem;
 	}
-	.controls {
-		flex-shrink: 0;
+	.hero-body {
+		grid-area: body;
 		display: flex;
-		gap: 0.5rem;
+		flex-direction: column;
+		gap: 1.25rem;
 	}
-	.toggle {
-		flex-shrink: 0;
-		display: grid;
-		place-items: center;
-		width: 38px;
-		height: 38px;
-		padding: 0;
-		border: var(--bw) solid var(--border);
-		background: var(--panel);
-		color: inherit;
-		font-family: inherit;
+	.hero-heading {
+		grid-area: title;
 	}
-	.toggle.active {
-		border-color: var(--accent);
-		color: var(--accent);
+	.hero-name {
+		margin: 1.25rem 0 0;
+		font-weight: normal; /* the page's h1, styled as the subtitle it sits under */
+		font-size: clamp(1.1rem, 2vw, 1.6rem);
+		letter-spacing: 0.08em;
 	}
-	.toggle svg {
-		width: 20px;
-		height: 20px;
-		display: block;
+	.hero-title {
+		margin: 0;
+		font-family: 'OnlyTrue', 'Departure Mono', ui-monospace, monospace;
+		font-weight: 1; /* as in hackclub/strands; stops faux-bold */
+		text-transform: uppercase; /* OnlyTrue only has capitals */
+		/* 7cqi keeps "TO MY SPACE" to about half the hero block even with large
+		   browser text, so the portrait beside it never gets squeezed. */
+		font-size: clamp(2.4rem, 6vw, min(5.6rem, 7cqi));
+		line-height: 1.3; /* room between the lines for the underline */
+		letter-spacing: 0.02em;
+		white-space: nowrap; /* exactly two lines, split by the <br> */
 	}
-
-	.layout {
-		display: grid;
-		grid-template-columns: 1fr;
+	/* Each title line has its own underline, drawn left to right, top line first, once the
+	   text has faded in. */
+	.hero-line {
+		position: relative;
+		display: inline-block;
+	}
+	.hero-line::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0.07em; /* grows downward, keeping the same gap under the letters */
+		height: 0.09em;
+		background: currentColor;
+		transform: scaleX(0);
+		transform-origin: left center;
+	}
+	.shown .hero-line::after {
+		animation: draw-line 0.8s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+	}
+	.shown .hero-line:nth-of-type(2)::after {
+		animation-delay: 0.4s;
+	}
+	@keyframes draw-line {
+		to {
+			transform: scaleX(1);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.shown .hero-line::after {
+			animation: none;
+			transform: scaleX(1);
+		}
+	}
+	.hero-sub {
+		margin: 0;
+		font-size: clamp(1rem, 1.6vw, 1.35rem);
+		line-height: 1.6;
+		opacity: 0.85;
+		text-wrap: pretty;
+	}
+	/* Doubled class to beat the later .socials rule's margin-left: auto. */
+	.socials.hero-socials {
+		margin-left: 0;
 		gap: 1rem;
+	}
+	.socials.hero-socials img,
+	.socials.hero-socials svg {
+		width: 32px;
+		height: 32px;
+	}
+	.hero .model {
+		grid-area: model;
+		margin: 0;
+		min-height: 0;
+	}
+	/* Arrow from under the hero to the fun facts; drawn in document coordinates. */
+	.scroll-trail {
+		position: absolute;
+		top: 0;
+		left: 0;
+		z-index: 0;
+		overflow: visible;
+		pointer-events: none;
+		color: var(--text);
+	}
+	.trail-line,
+	.trail-head {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 6;
+		stroke-linecap: square;
+		stroke-linejoin: miter;
 	}
 
 	.panel {
-		border: var(--bw) solid var(--border);
-		padding: 1rem;
 		display: flex;
 		flex-direction: column;
-		background: var(--panel);
-		box-shadow: var(--shadow);
 	}
 	.panel h2 {
 		margin: 0 0 1rem;
@@ -1066,91 +1109,64 @@
 		border-bottom: var(--bw) solid var(--border);
 		padding-bottom: 0.3rem;
 	}
-	/* Tab bar across the top of the character panel. */
-	.tabs-head {
+	/* Top-right switch for light/dark mode. */
+	.corner-toggles {
+		position: absolute;
+		top: 1rem;
+		right: 1rem;
+		z-index: 2;
 		display: flex;
-		justify-content: space-between;
-		align-items: flex-end;
-		gap: 0.75rem;
-		margin-bottom: 0.6rem;
-		padding-bottom: 0;
-		border-bottom: var(--bw) solid var(--border);
+		gap: 0.5rem;
 	}
-	.tabs {
-		display: flex;
-		gap: 0.25rem;
-	}
-	.tab {
-		padding: 0.3rem 0.6rem;
-		font-family: inherit;
-		font-size: 0.72rem;
-		letter-spacing: 0.1em;
-		color: inherit;
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-bottom: none;
-		opacity: 0.65;
-		transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-	}
-	.tab:hover {
-		opacity: 1;
-	}
-	.tab.active {
-		opacity: 1;
-		color: var(--text);
-		border-color: var(--text);
-		/* sit on top of the head's bottom border so the active tab reads as joined */
-		margin-bottom: calc(-1 * var(--bw));
-		background: var(--panel);
-	}
-	.tab-panel {
-		min-height: 320px;
-		padding-top: 1.1rem;
-	}
-	.stats-email {
-		font-weight: normal;
-		letter-spacing: 0;
-		text-decoration: none;
-		color: inherit;
-		opacity: 0.8;
-		padding-bottom: 0.3rem;
-	}
-	.stats-email:hover {
-		text-decoration: underline;
-	}
-
-	/* stage */
-	.stage {
-		flex-direction: row;
-		gap: 0;
+	.corner-toggle {
+		display: grid;
+		place-items: center;
+		width: 36px;
+		height: 36px;
 		padding: 0;
+		color: var(--text);
+		background: var(--panel);
+		border: var(--bw) solid var(--border);
 	}
-	.stage-half {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		padding: 1rem;
+	.corner-toggle:hover {
+		border-color: var(--accent);
+		color: var(--accent);
 	}
-	.model-half {
-		border-right: var(--bw) solid var(--border);
+	.corner-toggle svg {
+		display: block;
+		width: 18px;
+		height: 18px;
+	}
+	/* Contact line at the foot of the page. */
+	.contact {
+		margin-top: 3rem;
+		text-align: center;
+		font-size: 0.85rem;
+		line-height: 1.6;
+	}
+	.contact a {
+		color: var(--accent);
+		overflow-wrap: anywhere;
+	}
+	.fold-divider {
+		display: none;
 	}
 	.class-tag {
 		display: flex;
-		gap: 0.5rem;
-		align-items: center;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		align-items: flex-end;
+		gap: 0.5rem 1.5rem;
 	}
 	.class-tag h2 {
-		margin: 0;
+		margin: 0 0 0.35rem;
+		font-size: 0.95rem;
 	}
 	.class-tag p {
 		margin: 0;
-		font-size: 0.7rem;
-	}
-	.lvl-badge {
-		border: var(--bw) solid var(--border);
-		padding: 0.25rem 0.5rem;
+		max-width: 60ch;
 		font-size: 0.8rem;
+		line-height: 1.5;
 	}
 	.model {
 		position: relative;
@@ -1213,11 +1229,6 @@
 		background: #070608;
 		user-select: none;
 	}
-	/* Light mode: show the whole cut-out print on the panel (no dark fill, no crop). */
-	.model.light .model-ascii {
-		object-fit: contain;
-		background: transparent;
-	}
 	/* Big ASCII stars behind the cut-out, peeking through the removed background. */
 	.star {
 		position: absolute;
@@ -1248,63 +1259,13 @@
 		font-size: 6px;
 		opacity: 0.35;
 	}
-	.location,
-	.likes {
-		font-size: 0.7rem;
-		letter-spacing: 0.1em;
-	}
-	.likes {
-		margin: 0 0 1rem;
-	}
-	.stat-row {
-		display: flex;
-		justify-content: flex-start;
-		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 0.6rem;
-	}
-	.xp {
-		margin-bottom: 1rem;
-	}
-	.xp-bar {
-		flex: 1; /* grow to fill the row, pushing LOCATION to the right edge */
-		min-width: 0; /* let the nowrap cells clip instead of forcing the column wide */
-		display: flex;
-		align-items: stretch;
-		font-size: 0.95rem;
-		line-height: 1;
-		white-space: nowrap;
-		overflow: hidden;
-	}
-	.xp-brk {
-		flex: 0 0 auto;
-		color: var(--border);
-	}
-	.xp-cell {
-		flex: 1 1 0; /* cells spread evenly across the widened bar */
-		min-width: 0; /* allow equal widths regardless of glyph (█ is wider than ░) */
-		overflow: hidden;
-		text-align: center;
-		color: rgba(57, 211, 83, 0.4); /* unfilled: visible so the full track reads */
-		transition: color 0.25s ease;
-	}
-	.xp-cell.on {
-		color: var(--accent);
-		text-shadow: 0 0 2px rgba(57, 211, 83, 0.5); /* subtle CRT glow, no bleed */
-	}
-	.xp-label {
-		display: block;
-		margin-top: 0.3rem;
-		font-size: 0.6rem;
-		letter-spacing: 0.1em;
-		opacity: 0.8;
-	}
 	.socials {
 		display: flex;
 		gap: 0.75rem;
 		margin-left: auto;
 	}
-	.socials img {
+	.socials img,
+	.socials svg {
 		width: 22px;
 		height: 22px;
 		display: block;
@@ -1313,6 +1274,9 @@
 	   colour to black, invert(1) then makes it white) so none come out tinted. */
 	:global(body.dark) .mono {
 		filter: brightness(0) invert(1);
+	}
+	.socials .mail {
+		color: var(--text); /* matches the white GitHub mark */
 	}
 
 	/* Scroll-reveal: hidden until the `reveal` action adds `.in` on entry. The
@@ -1343,6 +1307,14 @@
 		margin: 0;
 		font-size: 0.95rem;
 		text-align: center;
+	}
+	.section-head h2 a {
+		color: inherit;
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
+	}
+	.section-head h2 a:hover {
+		color: var(--accent);
 	}
 	/* Pixel down-arrows scrolling as a seamless carousel beside the heading. The
 	   SVG is used as a mask so the arrows inherit the divider's --text colour;
@@ -1414,10 +1386,9 @@
 	/* For transparent logos: show the whole (square) image on a white ground. */
 	.card-img.contain {
 		object-fit: contain;
-		/* Match the card colour (panel over page bg). Kept opaque so the card's
-		   text underneath stays hidden when the image fades in. Adapts to theme. */
+		/* Match the page ground. Kept opaque so the card's text underneath stays
+		   hidden when the image fades in. Adapts to theme. */
 		background-color: var(--bg);
-		background-image: linear-gradient(var(--panel), var(--panel));
 	}
 	.mission:global(.hovering) .card-img {
 		opacity: 1;
@@ -1428,17 +1399,12 @@
 		padding: 0.15rem 0.4rem;
 		font-size: 0.6rem;
 		letter-spacing: 0.1em;
-		border: var(--bw) solid #e6b23e;
-		color: #e6b23e;
+		border: var(--bw) solid var(--warn);
+		color: var(--warn);
 	}
 	.badge.complete {
 		border-color: var(--accent);
 		color: var(--accent);
-	}
-	/* The amber reads too light on the off-white background — darken it. */
-	:global(body:not(.dark)) .badge:not(.complete) {
-		border-color: #b5651d;
-		color: #b5651d;
 	}
 	.mission-name {
 		font-size: 0.95rem;
@@ -1476,7 +1442,7 @@
 		line-height: 1;
 		font-size: 1rem;
 		color: var(--text);
-		background: var(--panel); /* mask the dashes directly under the plane */
+		background: var(--bg); /* mask the dashes directly under the plane */
 		padding: 0 0.1ch;
 		/* Crosses the line once and loops; the duration is set per-plane inline to
 		   the reading time of the paragraph above it, so it paces your reading. */
@@ -1538,9 +1504,43 @@
 		gap: 0.5rem;
 		min-width: 0;
 	}
-	.song-list .note {
-		color: #3ec500;
+	/* Small play/pause button for each song's preview clip. */
+	.song-list .play {
 		flex: 0 0 auto;
+		display: grid;
+		place-items: center;
+		width: 1.35rem;
+		height: 1.35rem;
+		padding: 0;
+		color: #3ec500;
+		background: transparent;
+		border: var(--bw) solid var(--border);
+	}
+	:global(body:not(.dark)) .song-list .play {
+		color: var(--accent); /* the bright green is too faint on the light ground */
+	}
+	.song-list .play svg {
+		display: block;
+		width: 0.6rem;
+		height: 0.6rem;
+		fill: currentColor;
+	}
+	.song-list .play:hover:not(:disabled),
+	.song-list .playing .play {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+	.song-list .play:disabled {
+		opacity: 0.35;
+	}
+	.song-list .play.failed {
+		border-color: var(--warn);
+		color: var(--warn);
+	}
+	.preview-err {
+		margin: 0 0 0.6rem;
+		font-size: 0.72rem;
+		color: var(--warn);
 	}
 	.song-list a {
 		color: inherit;
@@ -1549,9 +1549,47 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	.song-list a:hover {
+	.song-list a:hover,
+	.song-list .playing a {
 		color: var(--accent);
 		text-decoration: underline;
+	}
+	/* Little equaliser beside a song while its preview plays. */
+	.eq {
+		flex: 0 0 auto;
+		color: var(--accent);
+		display: inline-flex;
+		align-items: flex-end;
+		gap: 1px;
+		height: 0.8em;
+	}
+	.eq i {
+		width: 2px;
+		height: 100%;
+		background: currentColor;
+		transform-origin: bottom;
+		animation: eq 0.8s ease-in-out infinite;
+	}
+	.eq i:nth-child(2) {
+		animation-delay: -0.3s;
+	}
+	.eq i:nth-child(3) {
+		animation-delay: -0.55s;
+	}
+	@keyframes eq {
+		0%,
+		100% {
+			transform: scaleY(0.3);
+		}
+		50% {
+			transform: scaleY(1);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.eq i {
+			animation: none;
+			transform: scaleY(0.7);
+		}
 	}
 	.suggest-label {
 		display: block;
@@ -1609,11 +1647,26 @@
 		display: block;
 		margin-top: 0.3rem;
 		font-size: 0.72rem;
-		color: #e6b23e;
+		color: var(--warn);
 	}
 	.suggest-done {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem 0.75rem;
 		margin: 0;
 		font-size: 0.8rem;
+		color: var(--accent);
+	}
+	.suggest-again {
+		padding: 0.3rem 0.7rem;
+		font: inherit;
+		color: var(--text);
+		background: transparent;
+		border: var(--bw) solid var(--border);
+	}
+	.suggest-again:hover {
+		border-color: var(--accent);
 		color: var(--accent);
 	}
 	/* Hackatime telemetry: terminal-style key/value readout. */
@@ -1657,7 +1710,7 @@
 		margin: 0 0 1.1rem;
 		font-size: 0.72rem;
 		letter-spacing: 0.05em;
-		color: #e6b23e;
+		color: var(--warn);
 		opacity: 0.85;
 	}
 	/* Language pie + legend */
@@ -1763,7 +1816,6 @@
 	.chart {
 		display: block;
 		margin-bottom: 1.1rem;
-		background: #fff;
 		padding: 6px;
 		border: var(--bw) solid var(--border);
 	}
@@ -1775,36 +1827,30 @@
 	/* In dark mode, invert just the image so its white/grey ground turns dark,
 	   then rotate the hue 180° to bring the green squares (and labels) back.
 	   Border/background live on the wrapper so they aren't inverted. */
-	:global(body.dark) .chart {
-		background: transparent;
-	}
 	:global(body.dark) .chart img {
 		filter: invert(1) hue-rotate(180deg);
 	}
+	/* Light: multiply drops the chart image's white ground into the page colour. */
+	:global(body:not(.dark)) .chart img {
+		mix-blend-mode: multiply;
+	}
+
+	@media (max-width: 1080px) {
+		/* Room left of the fun facts for the scroll trail to turn and point in. */
+		.class-tag {
+			padding-left: 3rem;
+		}
+	}
 
 	@media (max-width: 940px) {
-		.layout {
-			/* minmax(0,…) lets the column shrink below its content's min width so
-			   nowrap children (e.g. the XP bar) clip rather than overflow. */
+		/* Hero: stack title, portrait, then the intro text. */
+		.hero-inner {
 			grid-template-columns: minmax(0, 1fr);
-		}
-		/* Stack the portrait above the stats so each gets the full panel width —
-		   side by side they're too narrow and the tabs/stats spill over the edge. */
-		.stage {
-			order: -1;
-			flex-direction: column;
-		}
-		.model-half {
-			border-right: none;
-			border-bottom: var(--bw) solid var(--border);
-		}
-		/* Let the tabs + email wrap instead of overflowing. */
-		.tabs-head {
-			flex-wrap: wrap;
-			gap: 0.25rem 0.75rem;
-		}
-		.stats-email {
-			word-break: break-all;
+			grid-template-areas:
+				'title'
+				'model'
+				'body';
+			gap: 2rem;
 		}
 	}
 
@@ -1812,8 +1858,58 @@
 		.screen {
 			padding: 1rem 1rem 7rem;
 		}
-		.topbar h1 {
-			font-size: 1.1rem;
+		/* Phones: a centred intro (no portrait) that fits on the first screen with room
+		   around it for the butterflies. The title sizes off the screen width so its lines
+		   never overflow. */
+		.hero {
+			padding: 1.25rem 1rem 2rem;
+		}
+		.hero-inner {
+			grid-template-areas:
+				'title'
+				'body';
+			gap: 1.1rem;
+			text-align: center;
+		}
+		.hero-title {
+			font-size: min(2.25rem, 9.5vw);
+		}
+		.hero-name {
+			margin-top: 0.6rem;
+			font-size: 1rem;
+		}
+		.hero .model {
+			display: none;
+		}
+		.fold-divider {
+			display: block;
+			width: 100%;
+			margin: 0 0 0.5rem;
+			border: 0;
+			border-top: 2px dashed var(--border);
+		}
+		.hero-body {
+			align-items: center;
+			gap: 0.9rem;
+		}
+		.hero-sub {
+			font-size: 0.92rem;
+			line-height: 1.5;
+		}
+		.socials.hero-socials {
+			justify-content: center;
+			gap: 0.85rem;
+		}
+		.socials.hero-socials img,
+		.socials.hero-socials svg {
+			width: 26px;
+			height: 26px;
+		}
+		.class-tag {
+			flex-direction: column;
+			align-items: center;
+			text-align: center;
+			padding-left: 0; /* no scroll trail on phones, so no room needed for it */
 		}
 		.section-head {
 			margin: 1.75rem 0;
@@ -1829,17 +1925,6 @@
 
 	/* Phones: stack the rows that assume a wide panel so nothing overflows. */
 	@media (max-width: 560px) {
-		/* XP bar gets its own full-width line under the level badge + location. */
-		.stat-row {
-			flex-wrap: wrap;
-		}
-		.location {
-			order: 1;
-		}
-		.xp-bar {
-			order: 2;
-			flex-basis: 100%;
-		}
 		/* Pie + legend share a row; the projects list drops below, full width. */
 		.lang-breakdown {
 			flex-wrap: wrap;
