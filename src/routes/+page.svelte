@@ -73,9 +73,12 @@
 		dark = document.body.classList.contains('dark');
 	});
 	function toggleTheme() {
+		// Decide the new theme up front: with a view transition, swap() runs later (after the
+		// "before" snapshot), so `dark` must not be read for saving until then.
+		const nextDark = !dark;
 		const swap = () => {
-			dark = !dark;
-			document.body.classList.toggle('dark', dark);
+			dark = nextDark;
+			document.body.classList.toggle('dark', nextDark);
 			flushSync(); // apply it (and redraw the dither) now, for the crossfade's "after" snapshot
 		};
 		// Crossfade from the old look to the new where view transitions are supported
@@ -84,7 +87,7 @@
 		if (document.startViewTransition && !reduceMotion) document.startViewTransition(swap);
 		else swap();
 		try {
-			if (dark) localStorage.removeItem('theme');
+			if (nextDark) localStorage.removeItem('theme');
 			else localStorage.setItem('theme', 'light');
 		} catch {
 			// storage blocked: the choice just won't be remembered
