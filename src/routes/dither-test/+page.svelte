@@ -2,7 +2,6 @@
 	import DitherButterflies from '$lib/DitherButterflies.svelte';
 
 	// Defaults match the root page.
-	let dark = $state(true);
 	let opacity = $state(0.08);
 	let count = $state(9);
 	let size = $state(16);
@@ -16,15 +15,6 @@
 	let push = $state(0.6);
 	let clearFloor = $state(0.15);
 	let showPanel = $state(true);
-
-	// Put the body's theme class back how we found it when leaving this page.
-	$effect(() => {
-		const hadDark = document.body.classList.contains('dark');
-		return () => document.body.classList.toggle('dark', hadDark);
-	});
-	$effect(() => {
-		document.body.classList.toggle('dark', dark);
-	});
 </script>
 
 <svelte:head>
@@ -32,13 +22,10 @@
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
-<DitherButterflies {dark} {opacity} {count} {size} {speed} {flapRate} {halo} {trail} {invert} {clearWidth} {fade} {push} {clearFloor} />
+<DitherButterflies {opacity} {count} {size} {speed} {flapRate} {halo} {trail} {invert} {clearWidth} {fade} {push} {clearFloor} />
 
 {#if showPanel}
 	<div class="panel">
-		<label class="check">
-			<input type="checkbox" bind:checked={dark} /> dark mode
-		</label>
 		<label>
 			<span class="row">opacity <b>{opacity.toFixed(2)}</b></span>
 			<input type="range" min="0.05" max="1" step="0.01" bind:value={opacity} />
@@ -94,19 +81,15 @@
 
 <style>
 	:global(body) {
-		background: #f0ede4;
-		color: #1a1814;
-	}
-	:global(body.dark) {
 		background: #131318;
 		color: #ece7da;
 	}
 
 	.panel,
 	.show {
-		--panel: rgba(248, 245, 238, 0.9);
-		--border: #8f8a7e;
-		--accent: #1f9a3d;
+		--panel: rgba(30, 30, 38, 0.9);
+		--border: #3a3a40;
+		--accent: #39d353;
 		position: fixed;
 		top: 16px;
 		right: 16px;
@@ -116,13 +99,6 @@
 		font-size: 13px;
 		color: inherit;
 	}
-	:global(body.dark) .panel,
-	:global(body.dark) .show {
-		--panel: rgba(30, 30, 38, 0.9);
-		--border: #3a3a40;
-		--accent: #39d353;
-	}
-
 	.panel {
 		display: flex;
 		flex-direction: column;

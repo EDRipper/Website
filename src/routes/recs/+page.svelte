@@ -46,21 +46,12 @@
 </main>
 
 <style>
-	/* Same light and dark palettes as the homepage (dark unless light mode was chosen). */
+	/* Same palette as the homepage. */
 	:global(body) {
-		background: #e3e8d3;
-		color: #1b2417;
-	}
-	:global(body.dark) {
 		background: #131318;
 		color: #ece7da;
 	}
 	.recs {
-		--line: #8c977a;
-		--row: #cdd4bb;
-		--green: #256b2a;
-	}
-	:global(body.dark) .recs {
 		--line: #3a3a40;
 		--row: #26262c;
 		--green: #39d353;

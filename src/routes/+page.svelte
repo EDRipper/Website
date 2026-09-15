@@ -1,15 +1,18 @@
 <script lang="ts">
 	// main page type shit
-	import { flushSync, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import { portraitCols, portraitRows, portraitChars, portraitColors } from '$lib/portrait-ascii';
 	import DitherButterflies from '$lib/DitherButterflies.svelte';
+	import WalkingBeest from '$lib/WalkingBeest.svelte';
 	import Seo from '$lib/Seo.svelte';
 	import { funFacts, songs, inventory, story as storyParas, missions, sidequests } from '$lib/content';
 	import { HOME_TITLE, HOME_DESCRIPTION, homeJsonLd } from '$lib/seo';
 	import ArrowEditor from '$lib/ArrowEditor.svelte';
 	import { TRAIL_PATH, measureTrail, sampleTrail, trailFinish, trailHead, type Pt, type TrailFrame } from '$lib/scroll-trail';
 
-	let { editArrow = false }: { editArrow?: boolean } = $props(); // true on /arrow-editor
+	// editArrow on /arrow-editor. scene: the dithered landscape rising at the foot of the page,
+	// or behind the whole page on /experiments.
+	let { editArrow = false, scene = 'footer' }: { editArrow?: boolean; scene?: 'backdrop' | 'footer' | 'header' } = $props();
 
 	// The email icon opens a draft with a friendly subject and message already filled in.
 	const mailHref = `mailto:euanripper2@gmail.com?subject=${encodeURIComponent('wow, you have such a cool site!')}&body=${encodeURIComponent("I couldn't resist reaching out to say so!")}`;
@@ -25,8 +28,7 @@
 
 
 	// Paint the ASCII portrait onto a canvas: the colour selfie on a near-black ground,
-	// each cell a dimmed fill behind a brighter glyph. The same in both themes. CSS
-	// scales it to fit.
+	// each cell a dimmed fill behind a brighter glyph. CSS scales it to fit.
 	const FONT = 12;
 	const CW = FONT * 0.6; // monospace advance
 	const LH = FONT; // line height
@@ -63,40 +65,13 @@
 		if (asciiCanvas) drawAscii();
 	});
 
-	// Theme: dark by default, light if the visitor picked it (saved, and applied by
-	// app.html before first paint).
-	// meh, i dont like light mode
-	//**
-	
-	let dark = $state(true);
-	onMount(() => {
-		dark = document.body.classList.contains('dark');
-	});
-	function toggleTheme() {
-		// Decide the new theme up front: with a view transition, swap() runs later (after the
-		// "before" snapshot), so `dark` must not be read for saving until then.
-		const nextDark = !dark;
-		const swap = () => {
-			dark = nextDark;
-			document.body.classList.toggle('dark', nextDark);
-			flushSync(); // apply it (and redraw the dither) now, for the crossfade's "after" snapshot
-		};
-		// Crossfade from the old look to the new where view transitions are supported
-		// (timing in app.css); otherwise, or with reduced motion, switch instantly.
-		const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-		if (document.startViewTransition && !reduceMotion) document.startViewTransition(swap);
-		else swap();
-		try {
-			if (nextDark) localStorage.removeItem('theme');
-			else localStorage.setItem('theme', 'light');
-		} catch {
-			// storage blocked: the choice just won't be remembered
-		}
-	}
-
 	// The background keeps its dither off these (plus a margin).
 	let heroEl = $state<HTMLElement>();
 	let mainEl = $state<HTMLElement>();
+	// The footer's landscape stands on the bottom of this spacer.
+	let sceneFootEl = $state<HTMLElement>();
+	// The credit strip at the very bottom; the background draws a tent and campfire in it.
+	let siteFootEl = $state<HTMLElement>();
 	// Butterflies can land on the portrait's top edge.
 	let portraitEl = $state<HTMLElement>();
 
@@ -382,6 +357,10 @@
 	// is TRAIL_PATH in $lib/scroll-trail, designed with the editor at /arrow-editor.
 	let heroBodyEl = $state<HTMLElement>();
 	let factsTextEl = $state<HTMLElement>();
+	// /descent: below the fold the butterflies wander the gaps between these, never over them.
+	let descentAvoid = $derived(
+		scene === 'header' && mainEl ? [heroBodyEl, portraitEl, ...Array.from(mainEl.children)] : []
+	);
 	let trail = $state<{ d: string; hx: number; hy: number; angle: number; w: number; h: number } | null>(null);
 
 	onMount(() => {
@@ -515,11 +494,10 @@
 </script>
 
 <svelte:head>
-	<!-- Without scripts there's no intro to wait for: show the content (and underlines) as-is. -->
+	<!-- Without scripts there's no intro to wait for: show the content as-is. -->
 	<noscript>
 		<style>
 			.veiled { opacity: 1 !important; }
-			.hero-line::after { transform: none !important; }
 		</style>
 	</noscript>
 </svelte:head>
@@ -529,48 +507,41 @@
 <!-- Dithered plasma background with butterflies drawn into it. It fades to the
      plain ground around the hero block and the main content column. -->
 <DitherButterflies
-	{dark}
 	plasma={!phone}
-	opacity={dark ? 0.08 : 0.2}
-	count={9}
-	clearEls={[heroEl, mainEl]}
+	plasmaBg={false}
+	{scene}
+	sceneOpacity={0.2}
+	sceneEnd={sceneFootEl}
+	starSky={scene === 'footer' ? 2 : 0}
+	starOpacity={0.45}
+	opacity={0.08}
+	bfOpacity={0.18}
+	bfSaturation={0}
+	bfLightness={1}
+	count={5}
+	clearEls={scene === 'header' ? [] : [heroEl, mainEl]}
 	clearPad={40}
 	clearRadius={100}
-	clearFloor={dark ? 0.15 : 0.03}
-	perchEls={phone ? [] : [portraitEl]}
-	intro={phone ? 0 : 3000}
+	clearFloor={scene === 'backdrop' ? 0.35 : 0.15}
+	perchEls={!phone && scene === 'backdrop' ? [portraitEl] : []}
+	avoidEls={descentAvoid}
+	campEl={phone ? null : siteFootEl}
+	intro={phone || scene === 'header' ? 0 : scene === 'footer' ? 1200 : 3000}
 	onready={showContent}
 	fade={220}
 />
 
+<!-- The StrandBeest strolls along the bottom of the screen once the page has faded in. -->
+{#if revealed}
+	<WalkingBeest />
+{/if}
+
 <!-- ── Hero: the first screen; everything else is a scroll away. Sits outside
      <main> so the background can close in around it. ── -->
-<section class="hero" class:veiled={!revealed} class:shown={revealed}>
-	<div class="corner-toggles">
-		<button
-			class="corner-toggle"
-			type="button"
-			onclick={toggleTheme}
-			aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-			title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-		>
-			{#if dark}
-				<!-- sun: switch to light -->
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-					<circle cx="12" cy="12" r="4" />
-					<path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-				</svg>
-			{:else}
-				<!-- moon: switch to dark -->
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
-					<path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a6.8 6.8 0 0 0 10.7 10.7z" />
-				</svg>
-			{/if}
-		</button>
-	</div>
+<section class="hero" class:descent={scene === 'header'} class:veiled={!revealed} class:shown={revealed}>
 	<div class="hero-inner" bind:this={heroEl}>
 		<div class="hero-heading">
-			<p class="hero-title"><span class="hero-line">Welcome</span><br /><span class="hero-line">to my space</span></p>
+			<p class="hero-title">Welcome<br />to my space</p>
 			<h1 class="hero-name">Euan Ripper</h1>
 		</div>
 		<div class="model" bind:this={portraitEl}>
@@ -582,6 +553,9 @@
 			<span class="photo-credit">photo credit: reem &lt;3</span>
 		</div>
 		<div class="hero-body" bind:this={heroBodyEl}>
+			{#if scene === 'header'}
+				<p class="hi">Hi!</p>
+			{/if}
 			<p class="hero-sub">
 				I'm an outdoorsy nerd, I like circus arts, robotics, and organising events for creatives
 			</p>
@@ -608,7 +582,7 @@
 <!-- Scroll trail from the hero down to the fun facts (see the trail logic above). -->
 {#if editArrow}
 	<ArrowEditor {heroBodyEl} {factsTextEl} />
-{:else if trail}
+{:else if trail && scene !== 'header'}
 	<svg
 		class="scroll-trail"
 		class:veiled={!revealed}
@@ -626,7 +600,7 @@
 	</svg>
 {/if}
 
-<main class="screen" class:veiled={!revealed} class:shown={revealed} bind:this={mainEl}>
+<main class="screen" class:descent-main={scene === 'header'} class:veiled={!revealed} class:shown={revealed} bind:this={mainEl}>
 	<!-- Phones only: marks where the first screen ends and the rest begins. -->
 	<hr class="fold-divider" />
 	<div class="class-tag">
@@ -906,35 +880,32 @@
 			{/each}
 		</div>
 	</section>
-
-	<footer class="contact">
-		the best way to reach me is to shoot me an email!
-		<a href="mailto:euanripper2@gmail.com">euanripper2@gmail.com</a>
-	</footer>
 </main>
+
+<!-- Room below the content for the background's landscape to rise into. -->
+{#if scene === 'footer'}
+	<div class="scene-foot" aria-hidden="true" bind:this={sceneFootEl}></div>
+{/if}
+
+<!-- The very foot of the page: plain ground under the landscape. -->
+<footer class="site-foot" class:veiled={!revealed} class:shown={revealed} bind:this={siteFootEl}>
+	<p>
+		made with &lt;3 and
+		<a href="https://github.com/edripper/website" target="_blank" rel="noopener noreferrer">open source</a>
+	</p>
+</footer>
 
 <style>
 	:global(body) {
-		/* Light: a retro handheld-screen palette, deep green-black ink on pale sage. */
-		--bg: #e3e8d3;
-		--panel: rgba(236, 240, 224, 0.88);
-		--border: #8c977a;
-		--bw: 2px;
-		--text: #1b2417; /* ~15:1 on the ground */
-		--accent: #256b2a; /* ~5.3:1, fine for small text */
-		--warn: #8a4b12; /* burnt orange, ~5.5:1 */
-		--shadow: 0 10px 30px rgba(27, 36, 23, 0.18);
-		background: var(--bg);
-		color: var(--text);
-	}
-	:global(body.dark) {
 		--bg: #131318;
 		--panel: rgba(30, 30, 38, 0.85);
 		--border: #3a3a40;
+		--bw: 2px;
 		--text: #ece7da;
-		--accent: #39d353; /* brighter green reads better on the dark ground */
-		--warn: var(--warn);
+		--accent: #39d353;
 		--shadow: 0 12px 34px rgba(0, 0, 0, 0.6);
+		background: var(--bg);
+		color: var(--text);
 	}
 
 	.screen {
@@ -983,7 +954,7 @@
 	/* Title and portrait side by side, level; the intro text runs under both. */
 	.hero-inner {
 		width: 100%;
-		max-width: 1240px; /* wider than the content column below, so the hero fills more of the screen */
+		max-width: 1150px; /* the title and portrait sit evenly either side of the middle */
 		container-type: inline-size; /* lets the title size against this block */
 		display: grid;
 		/* Title column is never narrower than the title's longest word (up to 55%);
@@ -1007,58 +978,20 @@
 	.hero-name {
 		margin: 1.25rem 0 0;
 		font-weight: normal; /* the page's h1, styled as the subtitle it sits under */
-		font-size: clamp(1.1rem, 2vw, 1.6rem);
+		font-size: clamp(1.3rem, 2.4vw, 1.9rem);
 		letter-spacing: 0.08em;
 	}
 	.hero-title {
 		margin: 0;
-		font-family: 'OnlyTrue', 'Departure Mono', ui-monospace, monospace;
-		font-weight: 1; /* as in hackclub/strands; stops faux-bold */
-		text-transform: uppercase; /* OnlyTrue only has capitals */
-		/* 7cqi keeps "TO MY SPACE" to about half the hero block even with large
+		/* 6cqi keeps "to my space" to about half the hero block even with large
 		   browser text, so the portrait beside it never gets squeezed. */
-		font-size: clamp(2.4rem, 6vw, min(5.6rem, 7cqi));
-		line-height: 1.3; /* room between the lines for the underline */
-		letter-spacing: 0.02em;
+		font-size: clamp(2.4rem, 5.4vw, min(5rem, 6.5cqi));
+		line-height: 1.15;
 		white-space: nowrap; /* exactly two lines, split by the <br> */
-	}
-	/* Each title line has its own underline, drawn left to right, top line first, once the
-	   text has faded in. */
-	.hero-line {
-		position: relative;
-		display: inline-block;
-	}
-	.hero-line::after {
-		content: '';
-		position: absolute;
-		left: 0;
-		right: 0;
-		bottom: 0.07em; /* grows downward, keeping the same gap under the letters */
-		height: 0.09em;
-		background: currentColor;
-		transform: scaleX(0);
-		transform-origin: left center;
-	}
-	.shown .hero-line::after {
-		animation: draw-line 0.8s cubic-bezier(0.65, 0, 0.35, 1) forwards;
-	}
-	.shown .hero-line:nth-of-type(2)::after {
-		animation-delay: 0.4s;
-	}
-	@keyframes draw-line {
-		to {
-			transform: scaleX(1);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.shown .hero-line::after {
-			animation: none;
-			transform: scaleX(1);
-		}
 	}
 	.hero-sub {
 		margin: 0;
-		font-size: clamp(1rem, 1.6vw, 1.35rem);
+		font-size: clamp(1.15rem, 1.9vw, 1.6rem);
 		line-height: 1.6;
 		opacity: 0.85;
 		text-wrap: pretty;
@@ -1066,17 +999,154 @@
 	/* Doubled class to beat the later .socials rule's margin-left: auto. */
 	.socials.hero-socials {
 		margin-left: 0;
-		gap: 1rem;
+		gap: 1.15rem;
 	}
 	.socials.hero-socials img,
 	.socials.hero-socials svg {
-		width: 32px;
-		height: 32px;
+		width: 38px;
+		height: 38px;
 	}
 	.hero .model {
 		grid-area: model;
+		justify-self: end;
+		max-width: 460px; /* a modest picture beside the title, not the whole column */
 		margin: 0;
 		min-height: 0;
+	}
+	/* /descent: the first screen is sky over the landscape, with just the title in its top-left
+	   corner. Below the treeline the sections alternate between two columns and one full-width
+	   block: intro | portrait, fun facts, songs | coding stats, the story, then missions |
+	   sidequests. */
+	.hero.descent {
+		display: block;
+		min-height: 0;
+		padding: 0;
+	}
+	.descent .hero-inner {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
+		grid-template-areas:
+			'title title'
+			'body model';
+		align-items: center;
+		gap: 2.5rem 4rem;
+		max-width: none;
+		padding: 0 6vw;
+		box-sizing: border-box;
+	}
+	.descent .hero-heading {
+		height: 125vh; /* the landscape's screen, plus the trees fading out below it */
+		padding: 7vh 0;
+		box-sizing: border-box;
+	}
+	.descent .hero-body {
+		position: relative;
+		max-width: 60ch;
+	}
+	/* A big greeting just above the intro, taken out of the flow so nothing else moves. */
+	.hi {
+		position: absolute;
+		bottom: 100%;
+		left: 0;
+		margin: 0 0 1.25rem;
+		font-size: clamp(2.5rem, 5.8vw, 5rem);
+		line-height: 1;
+	}
+	.screen.descent-main {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-auto-flow: row dense; /* so a right-hand heading sits level with the left one */
+		gap: 1rem 4rem;
+		max-width: none;
+		padding-inline: 6vw;
+	}
+	/* Everything is a full-width block unless it's put in a column below. Headings are
+	   separate elements from their panels, so each is picked out by what comes before it. */
+	.descent-main > * {
+		grid-column: 1 / -1;
+		min-width: 0;
+	}
+	/* Fun facts sits level with the stats' heading, and the songs beside the stats panel. */
+	.descent-main > .class-tag,
+	.descent-main > .personality {
+		grid-column: 1;
+	}
+	.descent-main > .personality + .section-head,
+	.descent-main > .stats,
+	.descent-main > .missions + .section-head,
+	.descent-main > .sidequests {
+		grid-column: 2;
+	}
+	.descent-main > .story + .section-head,
+	.descent-main > .missions {
+		grid-column: 1;
+	}
+	/* The story fills its block as two columns of text, so its lines stay readable. */
+	.descent-main > .story {
+		display: block;
+		columns: 2;
+		column-gap: 4rem;
+	}
+	.descent-main > .story > * {
+		break-inside: avoid;
+	}
+	/* Generous room between sections (and a way down for the butterflies). */
+	.screen.descent-main > .section-head,
+	.screen.descent-main > .class-tag {
+		margin-top: 7rem;
+	}
+	.screen.descent-main > .class-tag {
+		margin-bottom: 2.5rem;
+	}
+	@media (max-width: 1080px) {
+		/* Too narrow for pairs: one column, top to bottom. */
+		.screen.descent-main {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.descent-main > .personality,
+		.descent-main > .personality + .section-head,
+		.descent-main > .stats,
+		.descent-main > .story + .section-head,
+		.descent-main > .missions,
+		.descent-main > .missions + .section-head,
+		.descent-main > .sidequests {
+			grid-column: 1;
+			grid-row: auto;
+		}
+		.descent-main > .story {
+			columns: 1;
+		}
+	}
+	@media (max-width: 940px) {
+		.descent .hero-inner {
+			grid-template-columns: minmax(0, 1fr);
+			grid-template-areas:
+				'title'
+				'body'
+				'model';
+		}
+	}
+	@media (max-width: 700px) {
+		/* No landscape on phones, so no screen of sky to wait through. */
+		.descent .hero-heading {
+			height: auto;
+			padding: 3rem 0 1rem;
+		}
+		.descent .hero-inner {
+			padding: 0 1rem;
+		}
+		/* No spare room above the intro on phones, so the greeting takes its own. */
+		.hi {
+			position: static;
+			margin: 0;
+		}
+		.screen.descent-main {
+			padding-inline: 1rem;
+		}
+		.screen.descent-main > .section-head,
+		.screen.descent-main > .class-tag {
+			margin-top: 4rem;
+		}
 	}
 	/* Arrow from under the hero to the fun facts; drawn in document coordinates. */
 	.scroll-trail {
@@ -1112,44 +1182,28 @@
 		border-bottom: var(--bw) solid var(--border);
 		padding-bottom: 0.3rem;
 	}
-	/* Top-right switch for light/dark mode. */
-	.corner-toggles {
-		position: absolute;
-		top: 1rem;
-		right: 1rem;
-		z-index: 2;
+	.scene-foot {
+		height: 100vh;
+	}
+	/* Plain ground below the landscape: the credit on the left, sitting just above the grass
+	   the background draws along the bottom (its ground line is 20px up, with blades poking a
+	   little above that), across from the tent and campfire on the right. The page ends at the
+	   bottom of the grass. */
+	.site-foot {
 		display: flex;
-		gap: 0.5rem;
-	}
-	.corner-toggle {
-		display: grid;
-		place-items: center;
-		width: 36px;
-		height: 36px;
-		padding: 0;
-		color: var(--text);
-		background: var(--panel);
-		border: var(--bw) solid var(--border);
-	}
-	.corner-toggle:hover {
-		border-color: var(--accent);
-		color: var(--accent);
-	}
-	.corner-toggle svg {
-		display: block;
-		width: 18px;
-		height: 18px;
-	}
-	/* Contact line at the foot of the page. */
-	.contact {
-		margin-top: 3rem;
-		text-align: center;
+		align-items: flex-end;
+		min-height: 55vh;
+		padding: 2rem 6vw 48px;
+		box-sizing: border-box;
+		font-family: 'Departure Mono', ui-monospace, monospace;
 		font-size: 0.85rem;
-		line-height: 1.6;
 	}
-	.contact a {
+	.site-foot p {
+		margin: 0;
+		opacity: 0.75;
+	}
+	.site-foot a {
 		color: var(--accent);
-		overflow-wrap: anywhere;
 	}
 	.fold-divider {
 		display: none;
@@ -1185,26 +1239,7 @@
 		overflow: hidden;
 		padding: 6px;
 		box-sizing: border-box;
-		/* Marching ants: dashes drawn as gradients on each edge, then scrolled. */
-		background-image:
-			linear-gradient(90deg, var(--border) 50%, transparent 50%),
-			linear-gradient(90deg, var(--border) 50%, transparent 50%),
-			linear-gradient(0deg, var(--border) 50%, transparent 50%),
-			linear-gradient(0deg, var(--border) 50%, transparent 50%);
-		background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
-		background-size: 12px 2px, 12px 2px, 2px 12px, 2px 12px;
-		background-position: 0 0, 0 100%, 0 0, 100% 0;
-		animation: march 2s linear infinite;
-	}
-	@keyframes march {
-		to {
-			background-position: 12px 0, -12px 100%, 0 -12px, 100% 12px;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.model {
-			animation: none;
-		}
+		border: var(--bw) solid var(--border);
 	}
 	.photo-credit {
 		position: absolute;
@@ -1273,9 +1308,9 @@
 		height: 22px;
 		display: block;
 	}
-	/* Force these brand marks to pure white on dark (brightness(0) flattens any
-	   colour to black, invert(1) then makes it white) so none come out tinted. */
-	:global(body.dark) .mono {
+	/* Force these brand marks to pure white (brightness(0) flattens any colour to
+	   black, invert(1) then makes it white) so none come out tinted. */
+	.mono {
 		filter: brightness(0) invert(1);
 	}
 	.socials .mail {
@@ -1498,7 +1533,7 @@
 		padding: 0;
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 0.3rem 1.25rem;
+		gap: 0.85rem 1.25rem; /* room between the songs */
 		font-size: 0.85rem;
 	}
 	.song-list li {
@@ -1518,9 +1553,6 @@
 		color: #3ec500;
 		background: transparent;
 		border: var(--bw) solid var(--border);
-	}
-	:global(body:not(.dark)) .song-list .play {
-		color: var(--accent); /* the bright green is too faint on the light ground */
 	}
 	.song-list .play svg {
 		display: block;
@@ -1827,15 +1859,11 @@
 		height: auto;
 		display: block;
 	}
-	/* In dark mode, invert just the image so its white/grey ground turns dark,
-	   then rotate the hue 180° to bring the green squares (and labels) back.
-	   Border/background live on the wrapper so they aren't inverted. */
-	:global(body.dark) .chart img {
+	/* Invert just the image so its white/grey ground turns dark, then rotate the hue
+	   180° to bring the green squares (and labels) back. Border/background live on the
+	   wrapper so they aren't inverted. */
+	.chart img {
 		filter: invert(1) hue-rotate(180deg);
-	}
-	/* Light: multiply drops the chart image's white ground into the page colour. */
-	:global(body:not(.dark)) .chart img {
-		mix-blend-mode: multiply;
 	}
 
 	@media (max-width: 1080px) {
@@ -1854,6 +1882,9 @@
 				'model'
 				'body';
 			gap: 2rem;
+		}
+		.hero .model {
+			justify-self: start;
 		}
 	}
 
@@ -1883,6 +1914,14 @@
 		}
 		.hero .model {
 			display: none;
+		}
+		/* No plasma on phones, so no landscape either (nor camp). */
+		.scene-foot {
+			display: none;
+		}
+		.site-foot {
+			min-height: 0;
+			padding: 3rem 1rem;
 		}
 		.fold-divider {
 			display: block;
