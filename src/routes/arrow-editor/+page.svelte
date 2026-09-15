@@ -7,4 +7,5 @@
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
-<Home editArrow />
+<!-- The scroll trail belongs to the footer layout (the header one doesn't draw it). -->
+<Home editArrow scene="footer" />

@@ -7,6 +7,12 @@
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
+		<script>
+			// Dark by default; apply a saved light-mode choice before anything paints.
+			try {
+				if (localStorage.getItem('theme') === 'light') document.body.classList.add('light');
+			} catch {}
+		</script>
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>

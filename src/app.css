@@ -49,3 +49,22 @@ html {
 ::-webkit-scrollbar-thumb:hover {
 	background: #4a4a52;
 }
+
+/* Light mode: the paper as the track, a soft grey thumb. */
+html:has(body.light) {
+	scrollbar-color: #cfcac0 #f4f2ed;
+}
+html:has(body.light) ::-webkit-scrollbar-track {
+	background: #f4f2ed;
+}
+html:has(body.light) ::-webkit-scrollbar-thumb {
+	background: #cfcac0;
+	border-color: #f4f2ed;
+}
+
+/* The theme switch: a slow crossfade from the old look to the new (see toggleTheme). */
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation-duration: 0.7s;
+	animation-timing-function: ease-in-out;
+}

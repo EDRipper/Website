@@ -1,18 +1,20 @@
 <script lang="ts">
 	// main page type shit
-	import { onMount } from 'svelte';
+	import { flushSync, onMount } from 'svelte';
 	import { portraitCols, portraitRows, portraitChars, portraitColors } from '$lib/portrait-ascii';
 	import DitherButterflies from '$lib/DitherButterflies.svelte';
 	import WalkingBeest from '$lib/WalkingBeest.svelte';
 	import Seo from '$lib/Seo.svelte';
 	import { funFacts, songs, inventory, story as storyParas, missions, sidequests } from '$lib/content';
+	import { SONG_PREVIEWS } from '$lib/song-previews';
 	import { HOME_TITLE, HOME_DESCRIPTION, homeJsonLd } from '$lib/seo';
 	import ArrowEditor from '$lib/ArrowEditor.svelte';
 	import { TRAIL_PATH, measureTrail, sampleTrail, trailFinish, trailHead, type Pt, type TrailFrame } from '$lib/scroll-trail';
 
-	// editArrow on /arrow-editor. scene: the dithered landscape rising at the foot of the page,
-	// or behind the whole page on /experiments.
-	let { editArrow = false, scene = 'footer' }: { editArrow?: boolean; scene?: 'backdrop' | 'footer' | 'header' } = $props();
+	// editArrow on /arrow-editor. scene: where the dithered landscape goes — 'header' (the home
+	// page): the page opens on it and sinks past its treeline into the content; 'footer' (the
+	// arrow editor): it rises at the foot of the page; 'backdrop' (/experiments): behind it all.
+	let { editArrow = false, scene = 'header' }: { editArrow?: boolean; scene?: 'backdrop' | 'footer' | 'header' } = $props();
 
 	// The email icon opens a draft with a friendly subject and message already filled in.
 	const mailHref = `mailto:euanripper2@gmail.com?subject=${encodeURIComponent('wow, you have such a cool site!')}&body=${encodeURIComponent("I couldn't resist reaching out to say so!")}`;
@@ -41,7 +43,7 @@
 		const rgb = (euanRGB ??= decodeRGB(portraitColors));
 		cv.width = portraitCols * CW;
 		cv.height = portraitRows * LH;
-		ctx.fillStyle = '#070608';
+		ctx.fillStyle = dark ? '#070608' : '#ffffff'; // on white in light mode
 		ctx.fillRect(0, 0, cv.width, cv.height);
 		ctx.font = `${FONT}px 'Departure Mono', ui-monospace, monospace`;
 		ctx.textBaseline = 'top';
@@ -53,10 +55,13 @@
 			for (let rx = 0; rx < portraitCols; rx++, p++) {
 				const ch = portraitChars[base + rx];
 				const r = rgb[p * 3], g = rgb[p * 3 + 1], b = rgb[p * 3 + 2];
-				ctx.fillStyle = `rgb(${r * BG},${g * BG},${b * BG})`;
+				// Each cell's backing: the colour dimmed toward black, or by day washed toward white.
+				ctx.fillStyle = dark
+					? `rgb(${r * BG},${g * BG},${b * BG})`
+					: `rgb(${255 - (255 - r) * 0.85},${255 - (255 - g) * 0.85},${255 - (255 - b) * 0.85})`;
 				ctx.fillRect(rx * CW, ry * LH, CW + 1, LH + 1);
 				if (ch === ' ') continue;
-				ctx.fillStyle = `rgb(${r},${g},${b})`;
+				ctx.fillStyle = dark ? `rgb(${r},${g},${b})` : `rgb(${r * 0.55},${g * 0.55},${b * 0.55})`; // deeper on white, so the picture reads
 				ctx.fillText(ch, rx * CW, ry * LH);
 			}
 		}
@@ -84,10 +89,15 @@
 		revealed = true;
 	}
 
-	// Phones (the CSS's 700px breakpoint) get just the butterflies: no dithered plasma,
-	// and so no intro waiting for it to close in.
+	// Phones (the CSS's 700px breakpoint) skip the intro and the portrait perch, and get a
+	// shorter slice of the landscape.
 	let phone = $state(false);
+	// Phones draw each dither cell 4 device pixels wide (so ~1.33 CSS px on a 3x screen, 2 on a
+	// 2x one): fine detail, still lined up with the screen's own pixels.
+	let dpr = $state(1);
+	const phonePixel = $derived(Math.min(2, Math.max(1, 4 / dpr)));
 	onMount(() => {
+		dpr = window.devicePixelRatio || 1;
 		const mq = window.matchMedia('(max-width: 700px)');
 		const update = () => (phone = mq.matches);
 		update();
@@ -95,51 +105,57 @@
 		return () => mq.removeEventListener('change', update);
 	});
 
- 
-	 
-	// ── Synthesised audio: menu SFX ──
-	let audioCtx: AudioContext | null = null;
-	function getCtx(): AudioContext | null {
-		const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-		if (!Ctx) return null;
-		audioCtx ??= new Ctx();
-		if (audioCtx.state === 'suspended') audioCtx.resume();
-		return audioCtx;
-	}
-	function voice(freq: number, dur: number, vol: number, type: OscillatorType = 'square', when = 0) {
-		const ctx = getCtx();
-		if (!ctx) return;
-		const t = ctx.currentTime + when;
-		const osc = ctx.createOscillator();
-		const gain = ctx.createGain();
-		osc.type = type;
-		osc.frequency.value = freq;
-		gain.gain.setValueAtTime(vol, t);
-		gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-		osc.connect(gain);
-		gain.connect(ctx.destination);
-		osc.start(t);
-		osc.stop(t + dur);
-	}
-	// Shared loudness for the SFX and song previews.
-	const AUDIO_VOL = 0.25;
-	// Soft two-note rise played when a section first scrolls into view.
-	const discoverSound = () => {
-		voice(523.25, 0.09, AUDIO_VOL * 0.55, 'triangle');
-		voice(783.99, 0.13, AUDIO_VOL * 0.55, 'triangle', 0.07);
-	};
-
+	// Theme: dark by default; pressing the moon in the scene switches to light (saved, and
+	// applied by app.html before first paint), and pressing the sun switches back.
+	let dark = $state(true);
 	onMount(() => {
-		// Browsers keep audio suspended until a real gesture (hover doesn't count),
-		// so prime the context on the first pointer/key press anywhere.
-		const unlock = () => getCtx();
-		window.addEventListener('pointerdown', unlock, { once: true });
-		window.addEventListener('keydown', unlock, { once: true });
+		dark = !document.body.classList.contains('light');
+	});
+	function toggleTheme() {
+		const next = !dark;
+		const swap = () => {
+			dark = next;
+			document.body.classList.toggle('light', !next);
+			flushSync(); // apply it (and redraw the background) now, for the crossfade's "after" snapshot
+		};
+		// Crossfade where view transitions are supported (timing in app.css); otherwise switch.
+		const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		if (document.startViewTransition && !reduceMotion) document.startViewTransition(swap);
+		else swap();
+		try {
+			if (next) localStorage.removeItem('theme');
+			else localStorage.setItem('theme', 'light');
+		} catch {
+			// storage blocked: the choice just won't be remembered
+		}
+	}
+
+	// A nudge to scroll, for anyone still sat on the first screen after a few seconds. It goes
+	// as soon as they do.
+	let scrollHint = $state(false);
+	onMount(() => {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const onScroll = () => {
+			scrollHint = false;
+			if (timer) clearTimeout(timer);
+			window.removeEventListener('scroll', onScroll);
+		};
+		if (window.scrollY === 0) {
+			timer = setTimeout(() => {
+				if (window.scrollY === 0) scrollHint = true;
+			}, 5000);
+			window.addEventListener('scroll', onScroll, { passive: true });
+		}
 		return () => {
-			window.removeEventListener('pointerdown', unlock);
-			window.removeEventListener('keydown', unlock);
+			clearTimeout(timer);
+			window.removeEventListener('scroll', onScroll);
 		};
 	});
+
+ 
+	 
+	// How loud the song previews play.
+	const AUDIO_VOL = 0.25;
 
 	// ── Personality recommendations ──────────────────────────────────────────
 	// Favorite songs (from $lib/content) link to a Spotify search; visitors can suggest one back.
@@ -155,13 +171,17 @@
 	let noPreview = $state<string[]>([]); // songs that turned out to have no clip
 	let previewFailed = $state<string | null>(null); // song whose clip couldn't be played (tap to retry)
 	const previewUrls = new Map<string, Promise<string | null | undefined>>();
-	const resolvedUrls = new Map<string, string | null>(); // settled lookups, to start within the tap
+	// Starts with the clips pinned in the repo (see scripts/gen-song-previews.mjs), so a tap can
+	// start the audio within the press itself rather than waiting on a lookup.
+	const resolvedUrls = new Map<string, string | null>(Object.entries(SONG_PREVIEWS));
 	let previewToken = 0; // bumps on every play/pause so stale lookups bail
 	let fadeRaf = 0;
 
 	// Resolves to the clip URL, null when there's genuinely no clip, or undefined when the
 	// lookup itself failed (forgotten, so the next tap tries again).
 	const previewUrl = (s: { title: string; artist: string }) => {
+		const pinned = SONG_PREVIEWS[s.title];
+		if (pinned) return Promise.resolve(pinned);
 		let p = previewUrls.get(s.title);
 		if (!p) {
 			const q = new URLSearchParams({ title: s.title, artist: s.artist });
@@ -187,9 +207,13 @@
 			(entries) => {
 				if (!entries.some((e) => e.isIntersecting)) return;
 				io.disconnect();
-				for (const s of songs) previewUrl(s);
+				// Only songs without a pinned clip need looking up, spaced out so that a burst of
+				// them can't be rate-limited.
+				songs
+					.filter((s) => !SONG_PREVIEWS[s.title])
+					.forEach((s, i) => setTimeout(() => previewUrl(s), i * 250));
 			},
-			{ rootMargin: '300px 0px' }
+			{ rootMargin: '600px 0px' }
 		);
 		io.observe(node);
 		return { destroy: () => io.disconnect() };
@@ -244,6 +268,7 @@
 		if (el.src !== src) el.src = src;
 		else if (el.ended) el.currentTime = from;
 		cancelAnimationFrame(fadeRaf);
+		el.muted = false; // nothing else should ever mute it, but silence is hard to notice
 		el.volume = 0;
 		try {
 			await el.play();
@@ -317,8 +342,8 @@
 	// `delay` staggers grouped items (cards); `sound` plays the discovery note.
 	// Classes are stripped after the transition so they never shadow the card's
 	// own hover transitions. Skipped entirely under prefers-reduced-motion.
-	function reveal(node: HTMLElement, opts: { delay?: number; sound?: boolean } = {}) {
-		const { delay = 0, sound = false } = opts;
+	function reveal(node: HTMLElement, opts: { delay?: number } = {}) {
+		const { delay = 0 } = opts;
 		if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return {};
 		node.classList.add('reveal');
 		const onEnd = (ev: TransitionEvent) => {
@@ -329,7 +354,6 @@
 		const show = () => {
 			node.addEventListener('transitionend', onEnd);
 			node.classList.add('in');
-			if (sound) discoverSound();
 		};
 		const io = new IntersectionObserver(
 			(entries) => {
@@ -416,7 +440,8 @@
 	// Hackatime stuff, maybe replace?
 	const HACKATIME_USER = 'U098SB3609L';
 	// Slice colours for the language pie (last is grey for the "Other" bucket).
-	const LANG_COLORS = ['var(--accent)', '#4dd2ff', '#e6b23e', '#ff6b9d', '#b48cff', '#8f8a7e'];
+	// (Theme colours, set with the palettes in the styles: bright by night, greys by day.)
+	const LANG_COLORS = ['var(--lang-1)', 'var(--lang-2)', 'var(--lang-3)', 'var(--lang-4)', 'var(--lang-5)', 'var(--lang-6)'];
 
 	// Hackatime project names come from local folder names, so they don't always
 	// match a GitHub repo. Most are work projects in the hackclub org, so default
@@ -507,34 +532,37 @@
 <!-- Dithered plasma background with butterflies drawn into it. It fades to the
      plain ground around the hero block and the main content column. -->
 <DitherButterflies
-	plasma={!phone}
+	{dark}
+	ontoggle={toggleTheme}
 	plasmaBg={false}
 	{scene}
-	sceneOpacity={0.2}
+	sceneOpacity={!dark ? 0.5 : phone ? 0.3 : 0.2}
+	sceneContrast={phone || !dark ? 2 : 1}
+	mist={phone ? 0 : 0.45}
 	sceneEnd={sceneFootEl}
 	starSky={scene === 'footer' ? 2 : 0}
-	starOpacity={0.45}
-	opacity={0.08}
-	bfOpacity={0.18}
+	starOpacity={dark ? 0.45 : 0.6}
+	opacity={dark ? 0.08 : 0.2}
+	bfOpacity={dark ? 0.18 : 0.35}
 	bfSaturation={0}
-	bfLightness={1}
+	bfLightness={dark ? 1 : 0}
 	count={5}
+	pixel={phone ? phonePixel : 4}
+	size={phone ? Math.round(24 / phonePixel) : 16}
+	speed={phone ? 2 / phonePixel : 1}
 	clearEls={scene === 'header' ? [] : [heroEl, mainEl]}
 	clearPad={40}
 	clearRadius={100}
 	clearFloor={scene === 'backdrop' ? 0.35 : 0.15}
 	perchEls={!phone && scene === 'backdrop' ? [portraitEl] : []}
 	avoidEls={descentAvoid}
-	campEl={phone ? null : siteFootEl}
+	campEl={siteFootEl}
 	intro={phone || scene === 'header' ? 0 : scene === 'footer' ? 1200 : 3000}
 	onready={showContent}
 	fade={220}
 />
 
-<!-- The StrandBeest strolls along the bottom of the screen once the page has faded in. -->
-{#if revealed}
-	<WalkingBeest />
-{/if}
+<p class="scroll-hint" class:on={scrollHint}>*scroll for more</p>
 
 <!-- ── Hero: the first screen; everything else is a scroll away. Sits outside
      <main> so the background can close in around it. ── -->
@@ -603,6 +631,13 @@
 <main class="screen" class:descent-main={scene === 'header'} class:veiled={!revealed} class:shown={revealed} bind:this={mainEl}>
 	<!-- Phones only: marks where the first screen ends and the rest begins. -->
 	<hr class="fold-divider" />
+	<div class="section-head about-head" use:reveal>
+		<span class="line"></span>
+		<span class="arrow-stream" aria-hidden="true"></span>
+		<h2>About me</h2>
+		<span class="arrow-stream" aria-hidden="true"></span>
+		<span class="line"></span>
+	</div>
 	<div class="class-tag">
 		<div>
 			<h2>Fun facts</h2>
@@ -704,7 +739,7 @@
 	</section>
 
 	<!-- ── Stats ── -->
-	<div class="section-head" use:reveal={{ sound: true }}>
+	<div class="section-head" use:reveal>
 		<span class="line"></span>
 		<span class="arrow-stream" aria-hidden="true"></span>
 		<h2>
@@ -771,7 +806,7 @@
 
 		<a class="chart" href="https://github.com/edRipper" target="_blank" rel="noopener noreferrer">
 			<img
-				src="https://ghchart.rshah.org/39d353/edRipper"
+				src={dark ? 'https://ghchart.rshah.org/39d353/edRipper' : 'https://ghchart.rshah.org/57575c/edRipper'}
 				alt="GitHub commit history for edRipper"
 				loading="lazy"
 			/>
@@ -792,7 +827,7 @@
 	</section>
 
 	<!-- ── Story ── -->
-	<div class="section-head" use:reveal={{ sound: true }}>
+	<div class="section-head" use:reveal>
 		<span class="line"></span>
 		<span class="arrow-stream" aria-hidden="true"></span>
 		<h2>Story: The lore so far</h2>
@@ -815,7 +850,7 @@
 
 
 	<!-- ── Missions (projects) ── -->
-	<div class="section-head" use:reveal={{ sound: true }}>
+	<div class="section-head" use:reveal>
 		<span class="line"></span>
 		<span class="arrow-stream" aria-hidden="true"></span>
 		<h2>Missions</h2>
@@ -848,13 +883,17 @@
 					{/if}
 					<span class="mission-name">{m.name}</span>
 					<p class="mission-brief">{m.brief}</p>
+					{#if m.name === 'StrandBeest'}
+						<!-- The beest itself strolls along the bottom of its card. -->
+						<WalkingBeest />
+					{/if}
 				</svelte:element>
 			{/each}
 		</div>
 	</section>
 
 	<!-- ── Sidequests ── -->
-	<div class="section-head" use:reveal={{ sound: true }}>
+	<div class="section-head" use:reveal>
 		<span class="line"></span>
 		<span class="arrow-stream" aria-hidden="true"></span>
 		<h2>Sidequests: Fun projects on the side</h2>
@@ -904,8 +943,83 @@
 		--text: #ece7da;
 		--accent: #39d353;
 		--shadow: 0 12px 34px rgba(0, 0, 0, 0.6);
+		/* The language pie's slices. */
+		--lang-1: #39d353;
+		--lang-2: #4dd2ff;
+		--lang-3: #e6b23e;
+		--lang-4: #ff6b9d;
+		--lang-5: #b48cff;
+		--lang-6: #8f8a7e;
 		background: var(--bg);
 		color: var(--text);
+	}
+	/* Light mode (pressing the moon): a clean, minimal palette, ink on warm paper. */
+	:global(body.light) {
+		--bg: #f4f2ed;
+		--panel: rgba(255, 255, 255, 0.75);
+		--border: #bfb8ac;
+		--text: #1d1d1f;
+		--accent: #1d1d1f; /* monochrome: links, badges and stats in ink */
+		--shadow: 0 10px 30px rgba(29, 29, 31, 0.08);
+		/* Muted but distinct, so the pie still reads: grey slices all look alike. */
+		--lang-1: #2f6f5e;
+		--lang-2: #2b6ca3;
+		--lang-3: #c07a30;
+		--lang-4: #a63d5b;
+		--lang-5: #6b5ca5;
+		--lang-6: #8a8578;
+	}
+	:global(body.light) .model-ascii {
+		background: #fff;
+	}
+	:global(body.light) .mono {
+		filter: none;
+	}
+	:global(body.light) .chart img {
+		filter: none;
+		mix-blend-mode: multiply;
+	}
+	:global(body.light) .song-list .play {
+		color: var(--accent);
+	}
+
+	/* The nudge to scroll: small, top right, fading in once the visitor's sat a while. */
+	.scroll-hint {
+		position: fixed;
+		top: 1.25rem;
+		right: 1.5rem;
+		z-index: 6;
+		margin: 0;
+		font-family: 'Departure Mono', ui-monospace, monospace;
+		font-size: 0.9rem;
+		letter-spacing: 0.04em;
+		color: var(--text);
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.6s ease;
+	}
+	.scroll-hint.on {
+		opacity: 0.65;
+		/* Blinks like a terminal cursor, once it's faded in. */
+		animation: hint-blink 1.4s steps(1, end) 0.6s infinite;
+	}
+	@keyframes hint-blink {
+		0%,
+		55% {
+			opacity: 0.75;
+		}
+		56%,
+		100% {
+			opacity: 0.12;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.scroll-hint {
+			transition: none;
+		}
+		.scroll-hint.on {
+			animation: none;
+		}
 	}
 
 	.screen {
@@ -1003,8 +1117,8 @@
 	}
 	.socials.hero-socials img,
 	.socials.hero-socials svg {
-		width: 38px;
-		height: 38px;
+		width: 44px;
+		height: 44px;
 	}
 	.hero .model {
 		grid-area: model;
@@ -1066,10 +1180,15 @@
 		grid-column: 1 / -1;
 		min-width: 0;
 	}
-	/* Fun facts sits level with the stats' heading, and the songs beside the stats panel. */
+	/* "About me" sits level with the stats' heading; fun facts and the songs run down the left
+	   under it, with the stats panel alongside them both. */
+	.descent-main > .about-head,
 	.descent-main > .class-tag,
 	.descent-main > .personality {
 		grid-column: 1;
+	}
+	.descent-main > .stats {
+		grid-row: span 2;
 	}
 	.descent-main > .personality + .section-head,
 	.descent-main > .stats,
@@ -1090,12 +1209,26 @@
 	.descent-main > .story > * {
 		break-inside: avoid;
 	}
+	/* Missions and sidequests sit side by side, so their cards share a row height and the rows
+	   line up across the gutter (each card stretches to fill its row). */
+	.descent-main > .missions .mission-grid,
+	.descent-main > .sidequests .mission-grid {
+		grid-auto-rows: 17rem;
+	}
+	@media (max-width: 1300px) {
+		/* Narrower columns, so the briefs wrap further: taller rows. */
+		.descent-main > .missions .mission-grid,
+		.descent-main > .sidequests .mission-grid {
+			grid-auto-rows: 21rem;
+		}
+	}
 	/* Generous room between sections (and a way down for the butterflies). */
-	.screen.descent-main > .section-head,
-	.screen.descent-main > .class-tag {
+	.screen.descent-main > .section-head {
 		margin-top: 7rem;
 	}
+	/* Fun facts sits right under the "About me" divider, which brings its own room. */
 	.screen.descent-main > .class-tag {
+		margin-top: 0;
 		margin-bottom: 2.5rem;
 	}
 	@media (max-width: 1080px) {
@@ -1116,6 +1249,11 @@
 		.descent-main > .story {
 			columns: 1;
 		}
+		/* One column: nothing to line up with, so cards size to their own text again. */
+		.descent-main > .missions .mission-grid,
+		.descent-main > .sidequests .mission-grid {
+			grid-auto-rows: auto;
+		}
 	}
 	@media (max-width: 940px) {
 		.descent .hero-inner {
@@ -1127,24 +1265,23 @@
 		}
 	}
 	@media (max-width: 700px) {
-		/* No landscape on phones, so no screen of sky to wait through. */
+		/* The landscape's a shorter slice on phones, so a little less screen to scroll through. */
 		.descent .hero-heading {
-			height: auto;
+			height: 115vh;
 			padding: 3rem 0 1rem;
 		}
 		.descent .hero-inner {
 			padding: 0 1rem;
 		}
-		/* No spare room above the intro on phones, so the greeting takes its own. */
 		.hi {
-			position: static;
-			margin: 0;
+			left: 0;
+			right: 0;
+			text-align: center; /* centred like the intro under it */
 		}
 		.screen.descent-main {
 			padding-inline: 1rem;
 		}
-		.screen.descent-main > .section-head,
-		.screen.descent-main > .class-tag {
+		.screen.descent-main > .section-head {
 			margin-top: 4rem;
 		}
 	}
@@ -1915,13 +2052,22 @@
 		.hero .model {
 			display: none;
 		}
-		/* No plasma on phones, so no landscape either (nor camp). */
+		/* A shorter slice of the landscape on phones, and the credit above the camp rather than
+		   beside it (there's no room for both on one line). */
 		.scene-foot {
-			display: none;
+			height: 70vh;
 		}
+		/* Phones: centred under the cards rather than beside the camp. */
 		.site-foot {
-			min-height: 0;
-			padding: 3rem 1rem;
+			min-height: 45vh;
+			padding: 2rem 1rem 48px;
+			align-items: center;
+			justify-content: center;
+			text-align: center;
+		}
+		/* Phones scroll without being told. */
+		.scroll-hint {
+			display: none;
 		}
 		.fold-divider {
 			display: block;
@@ -1944,8 +2090,8 @@
 		}
 		.socials.hero-socials img,
 		.socials.hero-socials svg {
-			width: 26px;
-			height: 26px;
+			width: 30px;
+			height: 30px;
 		}
 		.class-tag {
 			flex-direction: column;

@@ -5,6 +5,7 @@
 
 	let {
 		dark = true, // white dots for a dark ground, black dots for a light one
+		pixel = 4, // on-screen px per dither cell: smaller is finer (the canvas is rebuilt when it changes)
 		opacity = 0.08,
 		count = 9,
 		size = 16, // wingspan-ish, in dither cells
@@ -22,6 +23,7 @@
 		campEl = null, // an element whose foot holds a dithered tent and campfire, smoke billowing up from it
 		intro = 0, // ms for the dither to close in from the screen edges on load; 0 = none
 		onready, // called once that intro has finished (straight away if there isn't one)
+		ontoggle, // pressing the scene's moon (or, in light mode, its sun) calls this; no button without it
 		clearWidth = 0, // px; with no clearEls, a plain column down the middle, 0 = none
 		fade = 200, // px; dithered fade from the plain areas out to full dither
 		push = 0.6, // strength of the cursor's wake, a clearing that trails its path; 0 = off
@@ -34,6 +36,7 @@
 		// same on the page's first screen, sinking behind its own trees as the page scrolls.
 		scene = '',
 		sceneOpacity = 0.16, // like opacity, for the landscape's dots
+		sceneContrast = 1, // 1..2: how dramatic the landscape is — bright far peaks, dark near forest, moonlit ridgelines (for small screens)
 		sceneEnd = null, // footer: the element whose bottom edge the landscape stands on (default: the page's end)
 		mist = 0.45, // 0..1, how thick that mist gets in the valleys
 		starSky = 0, // screens down the page that start as a night sky (the plasma faded out, shimmering stars), easing into the plasma; 0 = none
@@ -43,6 +46,7 @@
 		bfLightness = 0.7 // 0..1; each one's hue comes from where it is on the page
 	}: {
 		dark?: boolean;
+		pixel?: number;
 		opacity?: number;
 		count?: number;
 		size?: number;
@@ -60,6 +64,7 @@
 		campEl?: Element | null;
 		intro?: number;
 		onready?: () => void;
+		ontoggle?: () => void;
 		clearWidth?: number;
 		fade?: number;
 		push?: number;
@@ -68,6 +73,7 @@
 		plasmaBg?: boolean;
 		scene?: '' | 'backdrop' | 'footer' | 'header';
 		sceneOpacity?: number;
+		sceneContrast?: number;
 		sceneEnd?: Element | null;
 		mist?: number;
 		starSky?: number;
@@ -112,6 +118,9 @@
 	let bg!: HTMLCanvasElement;
 	let frontWrap!: HTMLDivElement; // the same again, above the page's content, for front butterflies
 	let fg!: HTMLCanvasElement;
+	let skyBtn = $state<HTMLButtonElement>(); // the theme toggle over the moon (or sun), when there's an ontoggle
+	// textPath needs an id to point at, and the component can appear more than once on a page.
+	const arcId = `sky-arc-${Math.random().toString(36).slice(2, 8)}`;
 
 	// Redraw straight away (rather than on the next animation frame) when the look changes,
 	// so a theme switch's crossfade captures the new dots, not the old ones.
@@ -128,7 +137,7 @@
 	onMount(() => {
 		const ctx = bg.getContext('2d')!;
 		const fctx = fg.getContext('2d')!;
-		const PIXEL = 4; // on-screen size of each dither cell
+		let PIXEL = pixel; // on-screen size of each dither cell (follows the prop; see frame)
 		const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 		const TAU = Math.PI * 2;
 
@@ -631,6 +640,8 @@
 		let parDrawn = 0; // the offset the scene was last drawn with
 		let scrollBlur = 0; // px of motion blur on the background, eased toward the scroll speed
 		let blurShown = 0; // what's actually set on the canvas
+		let skyBody: { x: number; y: number; r: number } | null = null; // the scene's moon or sun (cols, screen rows), for the toggle
+		let btnKey = ''; // where the toggle button was last put
 
 		const hash = (n: number) => {
 			const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
@@ -665,43 +676,62 @@
 		function sceneRows(t: number) {
 			const footer = scene === 'footer';
 			const framed = footer || scene === 'header'; // held to one screen of the page, not the screen
-			const H = framed ? vpRows * 0.7 : vpRows; // the scene's height: a framed one sits low in its screen
+			// The scene's height. A framed one sits low in its screen; on a tall narrow (phone) screen
+			// it's a shorter slice, so it isn't a few giant trees stretched up the screen; and a footer
+			// with more page below sceneEnd fits in the room left above that at the very end.
+			const footRows = footer
+				? Math.max(0, (window.innerHeight + scrollMax - (sceneBottom || scrollMax + window.innerHeight)) / PIXEL)
+				: 0;
+			const H = framed ? Math.min(vpRows * 0.7, cols * 0.9, vpRows - footRows) : vpRows;
 			const top0 = vpRows - H; // the scene's top, on that screen
 			const dk = dark ? 0 : 1;
 			const nL = LAYERS.length;
 			const prog = Math.min(1, Math.max(0, (scrollCells * PIXEL) / scrollMax));
-			// Footer: the scene is framed on the page's last screen. frameTop is that screen's
-			// top in screen rows: 0 once scrolled to the end, positive while still below.
 			const endPx = sceneBottom || scrollMax + window.innerHeight;
-			// Framed: the top of the scene's screen, in screen rows. The header's is the page's first
-			// screen; the footer's its last (or the one ending at sceneEnd).
-			const frameTop =
-				scene === 'header' ? -scrollCells : footer ? (endPx - window.innerHeight) / PIXEL - scrollCells : 0;
-			const groundRow = frameTop + vpRows; // footer: where the landscape ends, plain ground below
+			// Framed: where the scene's screen ends (screen rows) — the page's first screen for the
+			// header; for the footer, the screen ending at sceneEnd (or the page's end) — with plain
+			// ground below it.
+			const header = scene === 'header';
+			const groundRow = footer ? endPx / PIXEL - scrollCells : header ? vpRows - scrollCells : vpRows;
+			// A layer's offset from its place in the finished picture, by how closely it keeps up
+			// with the scroll. The header's is finished at the top of the page. The footer's is
+			// finished at the very end of the page (even if more page follows sceneEnd), with its
+			// nearest layer standing on sceneEnd all the way and farther ones lagging behind.
+			const shortOfEnd = Math.max(0, scrollMax / PIXEL - scrollCells);
+			const off = (follow: number) =>
+				footer ? groundRow - vpRows - shortOfEnd * (1 - follow) : header ? -scrollCells * follow : 0;
 			// The sky starts at the top of the screen, or for the footer just above the farthest
 			// ridge's frame, fading in from the plasma over the half screen above that.
-			const skyTop = (framed ? top0 + frameTop * LAYERS[0].follow : 0) - 0.1 * H;
+			const skyTop = (framed ? top0 + off(LAYERS[0].follow) : 0) - 0.1 * H;
 			const skyFade = footer ? 0.5 * H : 0;
 			const R = 0.06 * H;
 			const mx = cols * 0.76 - parX * 0.002 * cols;
-			const my = framed ? top0 + 0.18 * H + frameTop * 0.55 : (0.18 - 0.03 * prog) * H;
+			const my = framed ? top0 + 0.18 * H + off(0.55) : (0.18 - 0.03 * prog) * H;
 			parDrawn = parX;
 			sceneDirty = false;
 			// (Not yet risen into the canvas, or for a framed scene, already scrolled up past it.)
 			sceneShown =
 				Math.min(skyTop - skyFade, my - R * 4) < rows - oy && (!framed || groundRow + 0.22 * vpRows > -oy);
+			skyBody = null;
 			if (!sceneShown) return; // nothing on the canvas yet, so the plasma shows as usual
+			skyBody = { x: mx, y: my, r: R };
 			const groundA = Math.round(Math.min(1, Math.max(0, opacity)) * 255);
 			const sceneAlpha = Math.round(Math.min(1, Math.max(0, sceneOpacity)) * 255);
+			const starAlpha = Math.round(Math.min(1, Math.max(0, starOpacity)) * 255); // stars burn brighter than the land
 			const bases = new Float64Array(nL);
 
 			// Ridge lines: the rolling or peaked ground, with pines stood along it.
+			const boost = Math.min(1, Math.max(0, sceneContrast - 1)); // the drama, 0..1 (see below)
 			for (let l = 0; l < nL; l++) {
 				const L = LAYERS[l];
 				const r = ridges[l];
 				const sh = -parX * L.shift * cols;
-				const baseRow = (bases[l] = framed ? top0 + L.base * H + frameTop * L.follow : (L.base - L.rise * prog) * H);
-				const ground = (xw: number) => baseRow - L.amp * H * ridgeShape(l, xw / H);
+				const baseRow = (bases[l] = framed ? top0 + L.base * H + off(L.follow) : (L.base - L.rise * prog) * H);
+				// Drama heaves the rolling hills higher and makes their pines taller and spikier (the
+				// nearest trees, already big, stay as they are), so a treeline isn't a flat band.
+				const hillAmp = L.peaks ? 1 : 1 + 0.8 * boost;
+				const treeTall = l < nL - 1 ? 1 + 1.6 * boost : 1;
+				const ground = (xw: number) => baseRow - L.amp * hillAmp * H * ridgeShape(l, xw / H);
 				const treeH = L.trees * H;
 				const gap = treeH * 0.55; // tree spacing, cells
 				for (let x = 0; x < cols; x++) {
@@ -714,7 +744,7 @@
 							const cx = (k + 0.2 + 0.6 * hash(k * 5.3 + l * 7)) * gap;
 							const th = treeH * (0.55 + 0.45 * hash(k * 2.3 + l * 3));
 							const dx = Math.abs(xw - cx) / (th * 0.3);
-							if (dx < 1) ridge = Math.min(ridge, ground(cx) - th * (1 - dx));
+							if (dx < 1) ridge = Math.min(ridge, ground(cx) - th * treeTall * (1 - dx));
 						}
 					}
 					r[x] = ridge;
@@ -725,7 +755,13 @@
 			// Kept below the far peaks, so they stand out moonlit. A framed scene's sky is plain: just
 			// the stars and the moon, with no glow or mist.
 			const skyGlow = framed ? 0 : dark ? 0.22 : 0.05;
-			const rimD = 0.14;
+			const drama = Math.min(1, Math.max(0, sceneContrast - 1));
+			// Each layer's tone at full drama, far to near: in the dark, bright far peaks down to a
+			// black forest; by day, pale far peaks up to dark ink near.
+			// (By day even the far peaks keep some ink, so their white snow stands out.)
+			const DRAMA = dark ? [0.62, 0.42, 0.26, 0.12, 0] : [0.26, 0.36, 0.46, 0.6, 0.82];
+			const rimD = 0.14 + 0.36 * drama; // how bright each ridgeline's edge is
+			const rimRows = Math.max(2.5, (6 / PIXEL) * sceneContrast); // and how far down it reaches, rows
 			const shadeSign = dark ? 1 : -1; // moonlit faces: more white dots, or fewer black ones
 			const snowD = dark ? 0.9 : 0.02;
 			const mistD = dark ? 0.5 : 0;
@@ -739,12 +775,17 @@
 				const skyD = skyGlow * g * g;
 				const skyW = footer ? smooth(skyTop - skyFade, skyTop, sy) : 1; // sky rather than plasma
 				const starRow = Math.floor(sy);
-				const starCut = 0.9965 + 0.003 * g; // fewer stars down toward the glow
+				// Stars are scattered one per block of cells (a few px across), so each can be a
+				// cluster rather than a lone dot. Fewer down toward the glow, and the same number
+				// per screen px at any cell size.
+				const starCell = Math.max(2, Math.round(6 / PIXEL));
+				const starCut = 1 - (((0.0035 - 0.003 * g) * PIXEL * PIXEL) / 16) * starCell * starCell;
 				for (let x = 0; x < cols; x++) {
 					let l = nL - 1;
 					while (l >= 0 && sy < ridges[l][x]) l--;
 					let d: number;
 					let w = 1; // how much of this cell is the scene rather than the plasma
+					let isStar = false;
 					if (l < 0) {
 						w = skyW;
 						const below = plasmaBg ? 1 - plasmaBase[row + x] : 0; // what the sky fades up from
@@ -756,10 +797,22 @@
 								d += 0.28 * glow * glow;
 								w = Math.max(w, glow);
 							}
-							const hs = hash(x * 12.9898 + starRow * 78.233);
+							// One star per block, sat a little off centre, a few px across (the brightest
+							// wider), with a solid core fading at its edge.
+							const bx = Math.floor(x / starCell);
+							const by = Math.floor(starRow / starCell);
+							const hs = hash(bx * 12.9898 + by * 78.233);
 							if (w > 0.3 && hs > starCut && md > R * 1.6) {
-								const tw = twinkle ? 0.5 + 0.5 * Math.sin(t * (0.8 + hs * 3000 % 2) + x) : 1;
-								d = Math.max(d, 0.5 + 0.5 * tw);
+								const cx = (bx + 0.2 + 0.6 * hash(bx * 3.1 + by * 7.7)) * starCell;
+								const cy = (by + 0.2 + 0.6 * hash(bx * 5.3 + by * 2.9)) * starCell;
+								const big = hash(bx * 9.1 + by * 4.4);
+								const r = (big > 0.88 ? 3.2 : big > 0.6 ? 2.2 : 1.5) / PIXEL; // px → cells
+								const dist = Math.hypot(x + 0.5 - cx, starRow + 0.5 - cy);
+								if (dist < r) {
+									const tw = twinkle ? 0.5 + 0.5 * Math.sin(t * (0.8 + ((hs * 3000) % 2)) + bx) : 1;
+									d = Math.max(d, (0.78 + 0.22 * tw) * smooth(r, r * 0.35, dist));
+									isStar = true;
+								}
 							}
 						}
 						if (md < R + 1) {
@@ -770,7 +823,10 @@
 									if (Math.hypot(x - mx - cx * R, sy - my - cy * R) < cr * R) disc -= 0.3;
 								}
 							} else {
-								disc = Math.abs(md - R) < 1.2 ? 0.7 : 0.04; // the sun, in outline
+								// By day, the sun: a crisp ring, striped across its lower half.
+								const ringW = Math.max(0.6, 1.5 / PIXEL);
+								const stripes = sy > my && md < R - ringW && Math.sin(((sy - my) / R) * 12) > 0.35;
+								disc = Math.abs(md - R) < ringW ? 0.85 : stripes ? 0.55 : 0.02;
 							}
 							const cov = smooth(R + 1, R - 1, md);
 							d += (disc - d) * cov;
@@ -780,7 +836,10 @@
 						const L = LAYERS[l];
 						const r = ridges[l];
 						const dd = sy - r[x]; // rows below the ridge
-						d = L.tone[dk] + rimD * smooth(2.5, 0.5, dd);
+						// Drama moves each layer toward a starker tone and brightens every ridgeline (trees
+						// included), so even the darkest near forest reads as a silhouette with a moonlit edge.
+						const tone = L.tone[dk] + (DRAMA[l] - L.tone[dk]) * drama;
+						d = tone + rimD * smooth(rimRows, rimRows * 0.2, dd);
 						if (L.peaks) {
 							// Faces sloping down toward the moon catch its light near the crest.
 							const sl = (r[Math.min(cols - 1, x + 3)] - r[Math.max(0, x - 3)]) / 6; // over a few cells, so no streaks
@@ -790,6 +849,12 @@
 							if (alt > L.snow - 0.08) {
 								const edge = L.snow + 0.1 * (noise(x * 0.35 + l * 10) - 0.5);
 								d += (snowD - d) * smooth(edge - 0.03, edge + 0.03, alt);
+							}
+							// By day the snow is bare paper, which would wipe out the crest's edge, so its
+							// dark outline goes on last and the cap's shape reads against the sky.
+							if (!dark) {
+								const edgeW = Math.max(1.5, 3 / PIXEL); // ~3px thick
+								d = Math.max(d, 0.85 * smooth(edgeW, edgeW * 0.3, dd));
 							}
 						}
 					}
@@ -809,7 +874,7 @@
 					}
 					const v = 1 - d;
 					sceneBase[row + x] = v < 0 ? 0 : v > 1 ? 1 : v;
-					sceneA[row + x] = groundA + (sceneAlpha - groundA) * w;
+					sceneA[row + x] = isStar ? starAlpha : groundA + (sceneAlpha - groundA) * w;
 				}
 			}
 		}
@@ -901,6 +966,10 @@
 		let nextMeteor = 4 + Math.random() * 6; // seconds since start
 
 		function stampMeteor(t: number, sceneSky: boolean) {
+			if (!dark) {
+				meteor = null; // a daytime sky: no shooting stars
+				return;
+			}
 			// Only over sky: above a shown scene's far ridge, or up in the starry top of the page.
 			const sky = (x: number, sy: number) =>
 				(sceneSky && sy < ridges[0][Math.min(cols - 1, Math.max(0, Math.floor(x)))] - 3) ||
@@ -916,7 +985,7 @@
 				}
 				nextMeteor = t + 7 + Math.random() * 12;
 				const ang = 0.35 + Math.random() * 0.35; // below the horizontal
-				const speed = 140 + Math.random() * 80; // cells per second
+				const speed = ((140 + Math.random() * 80) * 4) / PIXEL; // cells per second (the same on screen at any cell size)
 				const dir = Math.random() < 0.5 ? -1 : 1;
 				meteor = {
 					x,
@@ -925,7 +994,7 @@
 					dy: Math.sin(ang) * speed,
 					t0: t,
 					life: 0.5 + Math.random() * 0.4,
-					len: 14 + Math.random() * 12
+					len: ((14 + Math.random() * 12) * 4) / PIXEL
 				};
 			}
 			const m = meteor;
@@ -964,10 +1033,12 @@
 			const c = docCamp!;
 			const W = c.x1 - c.x0;
 			const Hc = c.y1 - c.y0;
-			const s = Math.min(1.6, Math.max(0.75, Hc / 100)); // grows with the strip
+			// Sized in screen px (so the camp's the same size at any cell size), then in cells.
+			const narrow = W * PIXEL < 800; // a phone: the fire and tent spread out to fit side by side
+			const s = (Math.min(1.6, Math.max(0.6, Math.min((Hc * PIXEL) / 400, (W * PIXEL) / 600))) * 4) / PIXEL;
 			const gy = c.y1 - 20 / PIXEL; // the ground line, page rows: grass runs from it to the strip's bottom edge
-			const fx = c.x0 + W * 0.6; // the fire
-			const tx = c.x0 + W * 0.77; // the tent
+			const fx = c.x0 + W * (narrow ? 0.4 : 0.6); // the fire
+			const tx = c.x0 + W * (narrow ? 0.74 : 0.77); // the tent
 			const fh = 22 * s; // flame height
 			const ts = reduceMotion ? 1.3 : t; // the flames hold still under reduced motion
 
@@ -1751,6 +1822,28 @@
 
 		function frame(now: number) {
 			frameCount++;
+
+			// A new cell size: rebuild the canvas at it, carrying everything that lives in cells
+			// across (butterflies, the cursor's path) and starting the smoke and meteors afresh.
+			if (pixel !== PIXEL && pixel > 0) {
+				const k = PIXEL / pixel;
+				for (const bf of flock) {
+					bf.x *= k;
+					bf.y *= k;
+					bf.esc = null;
+				}
+				for (const p of path) {
+					p.x *= k;
+					p.y *= k;
+				}
+				puffs.length = 0;
+				meteor = null;
+				PIXEL = pixel;
+				resize();
+				scrollCells = window.scrollY / PIXEL;
+				wy0 = Math.floor(scrollCells) - OVER;
+				bg.style.transform = fg.style.transform = `translateY(${wy0 * PIXEL}px)`;
+			}
 			const t = (now - start) / 1000;
 			const dt = Math.min(0.05, (now - last) / 1000);
 			last = now;
@@ -1825,7 +1918,7 @@
 			// pointer's parallax has moved, as well as along with the plasma.
 			let showScene = showPlasma && !!scene;
 			if (showScene) {
-				const key = `${scene}|${dark}|${mist}|${opacity}|${sceneOpacity}`;
+				const key = `${scene}|${dark}|${mist}|${opacity}|${sceneOpacity}|${sceneContrast}`;
 				if (key !== sceneKey) {
 					sceneKey = key;
 					sceneDirty = true;
@@ -1839,12 +1932,31 @@
 			// A touch of motion blur on the background while the page scrolls fast: the scene's
 			// layers slide past the fixed dot pattern at different speeds, which flickers. It comes
 			// in quickly and eases back out, so the dots are crisp again once scrolling settles.
-			const blurTarget = showScene && !reduceMotion ? Math.min(1.6, Math.abs(dScroll) * 0.12) : 0;
+			const blurTarget = showScene && !reduceMotion ? Math.min(1.6, Math.abs(dScroll) * PIXEL * 0.03) : 0;
 			scrollBlur += (blurTarget - scrollBlur) * Math.min(1, dt * (blurTarget > scrollBlur ? 20 : 6));
 			const blurPx = scrollBlur < 0.05 ? 0 : Math.round(scrollBlur * 10) / 10;
 			if (blurPx !== blurShown) {
 				blurShown = blurPx;
 				bg.style.filter = blurPx ? `blur(${blurPx}px)` : '';
+			}
+
+			// The theme toggle sits over the scene's moon (or sun), wherever the parallax takes it.
+			if (skyBtn) {
+				const b = showScene ? skyBody : null;
+				const on = !!b && b.y + b.r > 0 && b.y - b.r < vpRows;
+				if (b && on) {
+					const r = Math.max(b.r * PIXEL * 1.25, 22); // a comfortable target
+					const left = b.x * PIXEL - r;
+					const top = (b.y + scrollCells) * PIXEL - r;
+					const key = `${Math.round(left)}|${Math.round(top)}|${Math.round(r)}`;
+					if (key !== btnKey) {
+						btnKey = key;
+						skyBtn.style.left = `${left}px`;
+						skyBtn.style.top = `${top}px`;
+						skyBtn.style.width = skyBtn.style.height = `${r * 2}px`;
+					}
+				}
+				if (skyBtn.hidden === on) skyBtn.hidden = !on;
 			}
 
 			// Keep flock size in sync with `count`.
@@ -2112,6 +2224,24 @@
 <div class="bg-wrap front" bind:this={frontWrap} aria-hidden="true">
 	<canvas class="bg" bind:this={fg}></canvas>
 </div>
+{#if ontoggle}
+	<button
+		class="sky-toggle"
+		type="button"
+		bind:this={skyBtn}
+		onclick={ontoggle}
+		aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+		title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+		hidden
+	>
+		<svg class="sky-ring" viewBox="0 0 120 120" aria-hidden="true">
+			<!-- The lower half of a circle a little wider than the moon, travelling left to right
+			     so the letters sit upright along the bottom of it. -->
+			<path id={arcId} fill="none" d="M -6 60 A 66 66 0 0 0 126 60" />
+			<text><textPath href="#{arcId}" startOffset="50%" text-anchor="middle">press me</textPath></text>
+		</svg>
+	</button>
+{/if}
 
 <style>
 	/* Spans the whole page (height set in sizeWrap) so the canvas can sit in the page and
@@ -2128,6 +2258,42 @@
 	/* Above the page's content, for the butterflies that fly in front of it. */
 	.bg-wrap.front {
 		z-index: 3;
+	}
+	/* Light mode: multiply, so only the ink marks the paper. */
+	:global(body.light) .bg-wrap {
+		mix-blend-mode: multiply;
+	}
+	/* An invisible round target over the scene's moon (or sun): pressing it switches theme. */
+	.sky-toggle {
+		position: absolute;
+		z-index: 4;
+		padding: 0;
+		border: 0;
+		border-radius: 50%;
+		background: transparent;
+		color: inherit;
+		cursor: pointer;
+	}
+	/* A quiet "press me" curved around the bottom of the moon (or sun), so it's clear it can be
+	   pressed. It's an SVG because CSS can't run text along a path; sized to the button, so it
+	   scales with the moon, rides along with it, and can't overhang the screen on a phone. */
+	.sky-ring {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		overflow: visible; /* the arc sits just outside the button box */
+		fill: currentColor;
+		font-family: 'Departure Mono', ui-monospace, monospace;
+		font-size: 15px; /* user units, so it scales with the viewBox */
+		letter-spacing: 0.1em;
+		opacity: 0.55;
+		pointer-events: none;
+	}
+	/* No glow on hover: the moon (or sun) just takes the press. Keyboard focus still shows. */
+	.sky-toggle:focus-visible {
+		outline: 2px solid currentColor;
+		outline-offset: 2px;
 	}
 	/* Sized in resize(); re-anchored within the page in frame(). */
 	.bg {
