@@ -14,8 +14,10 @@ git worktree add /tmp/snap/v5 <sha>
 
 ## 2. Share the dependencies
 
-Every version so far has a byte-identical `package.json` and `package-lock.json`, so one
-`node_modules` serves them all — no need to install per worktree. On Windows:
+v2 onwards have a byte-identical `package.json` and `package-lock.json`, and v1's is a strict
+subset of them (v2 added `vitest`, taking the lock from 90 resolved packages to 108) at the same
+`@sveltejs/kit` version. So one `node_modules` — installed from the newest lockfile — serves them
+all, and there's no need to install per worktree. On Windows:
 
 ```powershell
 New-Item -ItemType Junction -Path /tmp/snap/v5/node_modules -Target <repo>/node_modules
@@ -28,7 +30,11 @@ folder without touching the manifests:
 npm i --no-save --no-package-lock @sveltejs/adapter-static
 ```
 
-If a future version changes the lockfile, drop the junction and run `npm ci` in the worktree.
+Before reusing it for a new snapshot, check the lockfile: `git rev-parse <sha>:package-lock.json`
+against the current one. If they differ, diff the two `package.json`s. Sharing is only safe when
+the snapshot's dependencies are a subset of the shared folder's **at the same versions** — as v1's
+are. If a version needs a package the shared folder doesn't have, or the same package at a
+different version, drop the junction and run `npm ci` in that worktree instead.
 
 ## 3. Override the build config
 

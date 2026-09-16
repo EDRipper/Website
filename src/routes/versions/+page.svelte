@@ -21,6 +21,12 @@
 			date: '13 Sep 2026',
 			sha: '8fb579c',
 			note: 'The gamified layout: missions and sidequests as cards, reveal-on-scroll sections, and the dithered plasma behind the whole page.'
+		},
+		{
+			tag: 'v1',
+			date: '3 Aug 2026',
+			sha: '20ea5e3',
+			note: 'Where it started — a green-on-black character sheet. The portrait is drawn out of typed characters, the bio sits behind PERSONALITY / STATS / STORY tabs, and the missions are a skill tree.'
 		}
 	];
 </script>
