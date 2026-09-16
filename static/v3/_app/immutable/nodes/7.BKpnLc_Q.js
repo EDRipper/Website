@@ -1,0 +1,1 @@
+import{D as e,T as t,g as n}from"../chunks/fztZCVKN.js";import"../chunks/xihTtKlq.js";import{t as r}from"../chunks/Btb32WQE.js";var i=e(`<meta name="robots" content="noindex"/>`);function a(e){n(`omkwbn`,e=>{var n=i();t(e,n)}),r(e,{scene:`backdrop`})}export{a as component};
