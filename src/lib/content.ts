@@ -142,7 +142,14 @@ export const missions: Mission[] = [
 	}
 ];
 
-export type Sidequest = { name: string; href: string; brief?: string; image?: string; published?: boolean };
+export type Sidequest = {
+	name: string;
+	href: string;
+	brief?: string;
+	image?: string;
+	published?: boolean;
+	body?: string[];
+};
 
 export const sidequests: Sidequest[] = [
 	{
@@ -157,7 +164,15 @@ export const sidequests: Sidequest[] = [
 		brief:
 			"Over 3 years, take on progressively harder hikes, culminating in leading a team of 6 across 55 miles through 10 checkpoints for the army's Ten Tors challenge.",
 		href: '/blog/hike-55-miles-british-army',
-		image: '/images/hike-army.jpg'
+		image: '/images/hike-army.jpg',
+		published: true,
+		body: [
+			'May 2025 saw over 2000 teenagers take to Dartmoor to hike the 62nd annual Ten Tors challenge! Ten Tors is an endurance test hosted by the armed forces: teens carry all the kit they need (often around 20kg) to be self-sufficient for a weekend of gruelling hiking. Based on age category, teams of 6 trek either 35, 45 or 55 miles through all the bogs Dartmoor has to offer. My team (QE School Crediton) and I have now completed every event distance over the last 3 years.',
+			"Despite this year's record dropouts due to heat stroke, the whole team completed the 55-mile challenge in 33 hours, including 26 hours of walking and two 4am starts, leaving just 1 hour to spare.",
+			"The toughest part of the event was at the end of day 1: we were all exhausted, nearly out of water and too far from a river to get more. What little water we did have had to be conserved for cooking. As the sun went down, we found ourselves stuck in a bog, the wrong side of our 7th checkpoint, with only a 20-minute window before the checkpoints closed. We didn't make it in time, so we spent all of day 2 on the brink of disqualification, rushing into checkpoints minutes before the cut-off times. We had to remind ourselves constantly that it wouldn't be worth anything if it wasn't a challenge.",
+			'We had all trained hard over the winter, hiking together in the fog, hail and even the snow, but we weren\'t ready for the intense heat. Most of our safety gear was emergency survival blankets and extra layers, the opposite of what we needed. Of course we had basic medical kits, plenty of plasters and painkillers, but there was no avoiding the blisters. It was obvious who had done the challenge, as competitors hobbled around school for days afterwards with the distinctive "Ten Tors Limp".',
+			'Despite all of this, I absolutely loved it. The sense of accomplishment is immense, the bond we formed as a team is unbreakable, and the iconic "finish line pasty" makes it all worth it. Ten Tors is not a competitive race, it is all about finding your limits and pushing past them, and you need the support of everyone else, from your own team and beyond, to do that.'
+		]
 	},
 	{
 		name: 'Attend Hackathons',
@@ -196,6 +211,7 @@ export type Post = {
 	kind: 'Mission' | 'Sidequest';
 	status: Status;
 	published: boolean;
+	body?: string[];
 };
 
 const BLOG = '/blog/';
@@ -207,7 +223,17 @@ export const posts: Post[] = [
 	),
 	...sidequests.flatMap((q): Post[] =>
 		q.href.startsWith(BLOG)
-			? [{ slug: q.href.slice(BLOG.length), title: q.name, brief: q.brief ?? '', kind: 'Sidequest', status: 'COMPLETE', published: !!q.published }]
+			? [
+					{
+						slug: q.href.slice(BLOG.length),
+						title: q.name,
+						brief: q.brief ?? '',
+						kind: 'Sidequest',
+						status: 'COMPLETE',
+						published: !!q.published,
+						body: q.body
+					}
+				]
 			: []
 	)
 ];
