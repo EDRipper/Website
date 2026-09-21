@@ -54,7 +54,8 @@
 		width: 100%;
 		max-width: 70ch; /* broad reading measure, centred like the homepage's story panel */
 		margin: 0 auto;
-		border: 1px solid #ccc;
+		background: var(--panel);
+		border: var(--bw) solid var(--border);
 		padding: 1.5rem;
 	}
 	.panel h1 {

@@ -935,40 +935,8 @@
 </footer>
 
 <style>
-	:global(body) {
-		--bg: #131318;
-		--panel: rgba(30, 30, 38, 0.85);
-		--border: #3a3a40;
-		--bw: 2px;
-		--text: #ece7da;
-		--accent: #39d353;
-		--shadow: 0 12px 34px rgba(0, 0, 0, 0.6);
-		/* The language pie's slices. */
-		--lang-1: #39d353;
-		--lang-2: #4dd2ff;
-		--lang-3: #e6b23e;
-		--lang-4: #ff6b9d;
-		--lang-5: #b48cff;
-		--lang-6: #8f8a7e;
-		background: var(--bg);
-		color: var(--text);
-	}
-	/* Light mode (pressing the moon): a clean, minimal palette, ink on warm paper. */
-	:global(body.light) {
-		--bg: #f4f2ed;
-		--panel: rgba(255, 255, 255, 0.75);
-		--border: #bfb8ac;
-		--text: #1d1d1f;
-		--accent: #1d1d1f; /* monochrome: links, badges and stats in ink */
-		--shadow: 0 10px 30px rgba(29, 29, 31, 0.08);
-		/* Muted but distinct, so the pie still reads: grey slices all look alike. */
-		--lang-1: #2f6f5e;
-		--lang-2: #2b6ca3;
-		--lang-3: #c07a30;
-		--lang-4: #a63d5b;
-		--lang-5: #6b5ca5;
-		--lang-6: #8a8578;
-	}
+	/* Base theme variables live in app.css (site-wide); this file keeps only
+	   the homepage-specific light-mode overrides. */
 	:global(body.light) .model-ascii {
 		background: #fff;
 	}
