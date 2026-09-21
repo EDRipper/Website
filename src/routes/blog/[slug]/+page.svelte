@@ -1,6 +1,7 @@
 <script lang="ts">
-	// Placeholder blog post page — real content to be written per slug later.
-	// Unwritten posts are noindexed so search engines don't list empty pages.
+	// Renders each post's body paragraphs once written; falls back to a
+	// placeholder otherwise. Unwritten posts are noindexed so search engines
+	// don't list empty pages.
 	import Seo from '$lib/Seo.svelte';
 	import type { PageProps } from './$types';
 
@@ -21,7 +22,13 @@
 
 	<article class="panel">
 		<h1>{post.title}</h1>
-		<p class="muted">ill write the blogs later :p</p>
+		{#if post.body}
+			{#each post.body as paragraph}
+				<p>{paragraph}</p>
+			{/each}
+		{:else}
+			<p class="muted">ill write the blogs later :p</p>
+		{/if}
 	</article>
 </main>
 

@@ -88,7 +88,7 @@ export function postMarkdown(p: Post): string {
 			`- **Page:** ${postUrl(p)}`
 		].join('\n'),
 		p.published
-			? `Read the full write-up at ${postUrl(p)}.`
+			? (p.body?.join('\n\n') ?? `Read the full write-up at ${postUrl(p)}.`)
 			: `The full write-up hasn't been published yet. For more about Euan and his other projects, see the ${link('full profile', markdownUrl('/'))}.`
 	].join('\n\n') + '\n';
 }
