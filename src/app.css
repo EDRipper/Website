@@ -15,8 +15,7 @@ body {
 	overflow-x: clip;
 }
 
-/* Site-wide theme variables, dark by default (see app.html for the pre-paint
-   light-mode class). Every route gets these, not just the homepage. */
+/* Site-wide theme variables. Every route gets these, not just the homepage. */
 body {
 	--bg: #131318;
 	--panel: rgba(30, 30, 38, 0.85);
@@ -35,23 +34,6 @@ body {
 	background: var(--bg);
 	color: var(--text);
 }
-/* Light mode (pressing the moon): a clean, minimal palette, ink on warm paper. */
-body.light {
-	--bg: #f4f2ed;
-	--panel: rgba(255, 255, 255, 0.75);
-	--border: #bfb8ac;
-	--text: #1d1d1f;
-	--accent: #1d1d1f; /* monochrome: links, badges and stats in ink */
-	--shadow: 0 10px 30px rgba(29, 29, 31, 0.08);
-	/* Muted but distinct, so the pie still reads: grey slices all look alike. */
-	--lang-1: #2f6f5e;
-	--lang-2: #2b6ca3;
-	--lang-3: #c07a30;
-	--lang-4: #a63d5b;
-	--lang-5: #6b5ca5;
-	--lang-6: #8a8578;
-}
-
 /* Cursor from hackclub/beest: a chunky white arrow that grows a little while pressed.
    Mouse/trackpad only; touch screens keep the system behaviour. */
 @media (pointer: fine) {
@@ -87,21 +69,3 @@ html {
 	background: #4a4a52;
 }
 
-/* Light mode: the paper as the track, a soft grey thumb. */
-html:has(body.light) {
-	scrollbar-color: #cfcac0 #f4f2ed;
-}
-html:has(body.light) ::-webkit-scrollbar-track {
-	background: #f4f2ed;
-}
-html:has(body.light) ::-webkit-scrollbar-thumb {
-	background: #cfcac0;
-	border-color: #f4f2ed;
-}
-
-/* The theme switch: a slow crossfade from the old look to the new (see toggleTheme). */
-::view-transition-old(root),
-::view-transition-new(root) {
-	animation-duration: 0.7s;
-	animation-timing-function: ease-in-out;
-}

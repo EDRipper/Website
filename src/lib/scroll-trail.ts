@@ -15,6 +15,7 @@ export type TrailNode = { x: number; y: number; ix: number; iy: number; ox: numb
 export type TrailFrame = { tail: Pt; tip: Pt; w: number; vh: number };
 
 export const TRAIL_STUB = 56; // path length shown before any scroll (the resting arrow)
+export const TRAIL_SHIFT = 220; // px the whole arrow slides right, tail and tip together
 export const TRAIL_STEP = 3; // px between path samples
 
 // Designed on /arrow-editor: paste its "Copy data" output over this.
@@ -39,17 +40,33 @@ export function docBox(el: HTMLElement) {
 }
 
 /**
- * Tail: centred just under the hero text. Tip: just left of the fun facts paragraph.
- * No arrow on phones (the page's 700px breakpoint).
+ * Tail: just past the end of the intro's last line ("…for creatives"). Tip: just left of the
+ * fun facts paragraph. No arrow on phones (the page's 700px breakpoint).
  */
-export function measureTrail(heroBody: HTMLElement, factsText: HTMLElement): TrailFrame | null {
+export function measureTrail(tailEl: HTMLElement, factsText: HTMLElement): TrailFrame | null {
 	const w = document.documentElement.clientWidth;
 	if (w <= 700) return null;
-	const body = docBox(heroBody);
+	const body = docBox(tailEl);
 	const text = docBox(factsText);
-	const tail = { x: w / 2, y: body.y + body.h + 28 };
+	// The paragraph's box spans the whole column, so its edges say nothing about where the
+	// words actually stop — the line boxes do. Those are viewport-space, so only their offset
+	// from the element's own rect is used, which survives the reveal animation's translate.
+	const range = document.createRange();
+	range.selectNodeContents(tailEl);
+	const lines = Array.from(range.getClientRects()).filter((r) => r.width > 1 && r.height > 1);
+	const own = tailEl.getBoundingClientRect();
+	const last = lines[lines.length - 1];
+	const tail = last
+		? { x: body.x + (last.right - own.left) + 26, y: body.y + (last.top - own.top) + last.height / 2 }
+		: { x: body.x + body.w / 2, y: body.y + body.h + 28 };
 	const tip = { x: text.x - 12, y: text.y + Math.min(text.h / 2, 30) };
 	if (tip.y - tail.y < TRAIL_STUB * 2) return null;
+	// Slide the whole arrow right — both ends by the same amount, so its shape and span are
+	// untouched — keeping it clear of the socials and the headings. Capped so the tail can't
+	// run off a narrow window.
+	const shift = Math.max(0, Math.min(TRAIL_SHIFT, w - 40 - tail.x));
+	tail.x += shift;
+	tip.x += shift;
 	return { tail, tip, w, vh: window.innerHeight };
 }
 
@@ -126,19 +143,33 @@ export function sampleTrail(f: TrailFrame, nodes: TrailNode[]): Pt[] {
 
 const stubIndex = (pts: Pt[]) => Math.min(pts.length - 1, Math.round(TRAIL_STUB / TRAIL_STEP));
 
+/** The scroll positions between which the head travels the path. */
+export type TrailRange = { start: number; finish: number };
+
 /**
- * Scroll distance over which the head travels the path: at scroll speed, but always
- * arriving by the time the end of the arrow is just past halfway down the screen.
+ * The head sets off once the tail is well into view and lands as the end of the path passes
+ * the middle of the screen — at scroll speed, unless that deadline comes sooner.
+ *
+ * Both ends are anchored to where the arrow actually sits in the document. Measuring from a
+ * scroll of 0 only worked while the hero was short: with a screen-and-a-quarter lander above
+ * it, the arrow is a page and a half down, so it would finish drawing long before it came
+ * into view and never appear to follow the scroll at all.
  */
-export function trailFinish(f: TrailFrame, pts: Pt[]): number {
-	const travel = (pts.length - 1 - stubIndex(pts)) * TRAIL_STEP;
-	return Math.max(1, Math.min(travel, pts[pts.length - 1].y - f.vh * 0.55));
+export function trailRange(f: TrailFrame, pts: Pt[]): TrailRange {
+	// It draws over as much of the scroll as the arrow is actually on the page: setting off
+	// as the tail clears the bottom edge, landing only once the end of the path is well up
+	// the screen. Tying it to the path's own length instead made it race ahead and finish
+	// while there was still most of the arrow left to scroll past.
+	const start = Math.max(0, f.tail.y - f.vh * 0.95);
+	const finish = pts[pts.length - 1].y - f.vh * 0.25;
+	return { start, finish: Math.max(start + 1, finish) };
 }
 
 /** The drawn part of the path and the head's position/rotation for a scroll offset. */
-export function trailHead(pts: Pt[], scrollY: number, finish: number) {
+export function trailHead(pts: Pt[], scrollY: number, range: TrailRange) {
 	const stubEnd = stubIndex(pts);
-	const progress = Math.min(1, Math.max(0, scrollY / finish));
+	const span = Math.max(1, range.finish - range.start);
+	const progress = Math.min(1, Math.max(0, (scrollY - range.start) / span));
 	const f = stubEnd + (pts.length - 1 - stubEnd) * progress;
 	const i = Math.max(0, Math.min(pts.length - 2, Math.floor(f)));
 	const k = f - i;

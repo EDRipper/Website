@@ -23,7 +23,6 @@
 		campEl = null, // an element whose foot holds a dithered tent and campfire, smoke billowing up from it
 		intro = 0, // ms for the dither to close in from the screen edges on load; 0 = none
 		onready, // called once that intro has finished (straight away if there isn't one)
-		ontoggle, // pressing the scene's moon (or, in light mode, its sun) calls this; no button without it
 		clearWidth = 0, // px; with no clearEls, a plain column down the middle, 0 = none
 		fade = 200, // px; dithered fade from the plain areas out to full dither
 		push = 0.6, // strength of the cursor's wake, a clearing that trails its path; 0 = off
@@ -64,7 +63,6 @@
 		campEl?: Element | null;
 		intro?: number;
 		onready?: () => void;
-		ontoggle?: () => void;
 		clearWidth?: number;
 		fade?: number;
 		push?: number;
@@ -118,9 +116,6 @@
 	let bg!: HTMLCanvasElement;
 	let frontWrap!: HTMLDivElement; // the same again, above the page's content, for front butterflies
 	let fg!: HTMLCanvasElement;
-	let skyBtn = $state<HTMLButtonElement>(); // the theme toggle over the moon (or sun), when there's an ontoggle
-	// textPath needs an id to point at, and the component can appear more than once on a page.
-	const arcId = `sky-arc-${Math.random().toString(36).slice(2, 8)}`;
 
 	// Redraw straight away (rather than on the next animation frame) when the look changes,
 	// so a theme switch's crossfade captures the new dots, not the old ones.
@@ -641,7 +636,6 @@
 		let scrollBlur = 0; // px of motion blur on the background, eased toward the scroll speed
 		let blurShown = 0; // what's actually set on the canvas
 		let skyBody: { x: number; y: number; r: number } | null = null; // the scene's moon or sun (cols, screen rows), for the toggle
-		let btnKey = ''; // where the toggle button was last put
 
 		const hash = (n: number) => {
 			const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
@@ -905,7 +899,7 @@
 		function buildStars() {
 			stars = [];
 			const skyRows = starSky * vpRows;
-			const n = Math.round((cols * skyRows) / 600);
+			const n = Math.round((cols * skyRows) / 360); // a fuller sky: it's the whole first screen now
 			for (let i = 0; i < n; i++) {
 				const y = hash(i * 7.31 + 2.1) * skyRows;
 				const k = skyAt(y);
@@ -983,7 +977,7 @@
 					nextMeteor = t + 1; // no sky there right now: look again shortly
 					return;
 				}
-				nextMeteor = t + 7 + Math.random() * 12;
+				nextMeteor = t + 4 + Math.random() * 7; // more often, with a whole screen of sky to cross
 				const ang = 0.35 + Math.random() * 0.35; // below the horizontal
 				const speed = ((140 + Math.random() * 80) * 4) / PIXEL; // cells per second (the same on screen at any cell size)
 				const dir = Math.random() < 0.5 ? -1 : 1;
@@ -1940,25 +1934,6 @@
 				bg.style.filter = blurPx ? `blur(${blurPx}px)` : '';
 			}
 
-			// The theme toggle sits over the scene's moon (or sun), wherever the parallax takes it.
-			if (skyBtn) {
-				const b = showScene ? skyBody : null;
-				const on = !!b && b.y + b.r > 0 && b.y - b.r < vpRows;
-				if (b && on) {
-					const r = Math.max(b.r * PIXEL * 1.25, 22); // a comfortable target
-					const left = b.x * PIXEL - r;
-					const top = (b.y + scrollCells) * PIXEL - r;
-					const key = `${Math.round(left)}|${Math.round(top)}|${Math.round(r)}`;
-					if (key !== btnKey) {
-						btnKey = key;
-						skyBtn.style.left = `${left}px`;
-						skyBtn.style.top = `${top}px`;
-						skyBtn.style.width = skyBtn.style.height = `${r * 2}px`;
-					}
-				}
-				if (skyBtn.hidden === on) skyBtn.hidden = !on;
-			}
-
 			// Keep flock size in sync with `count`.
 			const first = flock.length === 0;
 			while (flock.length < count) flock.push(spawn(first));
@@ -2196,9 +2171,13 @@
 		wy0 = Math.floor(scrollCells) - OVER;
 		bg.style.transform = fg.style.transform = `translateY(${wy0 * PIXEL}px)`;
 		window.addEventListener('resize', resize);
-		window.addEventListener('pointermove', onPointerMove, { passive: true });
-		document.documentElement.addEventListener('pointerleave', onPointerLeave);
-		window.addEventListener('blur', onPointerLeave);
+		// Pointer tracking exists only to drive the cursor's wake. With push at 0 there's
+		// nothing for it to update, so don't pay for the events at all.
+		if (push > 0) {
+			window.addEventListener('pointermove', onPointerMove, { passive: true });
+			document.documentElement.addEventListener('pointerleave', onPointerLeave);
+			window.addEventListener('blur', onPointerLeave);
+		}
 		document.fonts?.ready.then(onFonts);
 		raf = requestAnimationFrame(frame);
 		redrawNow = () => {
@@ -2224,24 +2203,6 @@
 <div class="bg-wrap front" bind:this={frontWrap} aria-hidden="true">
 	<canvas class="bg" bind:this={fg}></canvas>
 </div>
-{#if ontoggle}
-	<button
-		class="sky-toggle"
-		type="button"
-		bind:this={skyBtn}
-		onclick={ontoggle}
-		aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-		title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-		hidden
-	>
-		<svg class="sky-ring" viewBox="0 0 120 120" aria-hidden="true">
-			<!-- The lower half of a circle a little wider than the moon, travelling left to right
-			     so the letters sit upright along the bottom of it. -->
-			<path id={arcId} fill="none" d="M -6 60 A 66 66 0 0 0 126 60" />
-			<text><textPath href="#{arcId}" startOffset="50%" text-anchor="middle">press me</textPath></text>
-		</svg>
-	</button>
-{/if}
 
 <style>
 	/* Spans the whole page (height set in sizeWrap) so the canvas can sit in the page and
@@ -2258,42 +2219,6 @@
 	/* Above the page's content, for the butterflies that fly in front of it. */
 	.bg-wrap.front {
 		z-index: 3;
-	}
-	/* Light mode: multiply, so only the ink marks the paper. */
-	:global(body.light) .bg-wrap {
-		mix-blend-mode: multiply;
-	}
-	/* An invisible round target over the scene's moon (or sun): pressing it switches theme. */
-	.sky-toggle {
-		position: absolute;
-		z-index: 4;
-		padding: 0;
-		border: 0;
-		border-radius: 50%;
-		background: transparent;
-		color: inherit;
-		cursor: pointer;
-	}
-	/* A quiet "press me" curved around the bottom of the moon (or sun), so it's clear it can be
-	   pressed. It's an SVG because CSS can't run text along a path; sized to the button, so it
-	   scales with the moon, rides along with it, and can't overhang the screen on a phone. */
-	.sky-ring {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		overflow: visible; /* the arc sits just outside the button box */
-		fill: currentColor;
-		font-family: 'Departure Mono', ui-monospace, monospace;
-		font-size: 15px; /* user units, so it scales with the viewBox */
-		letter-spacing: 0.1em;
-		opacity: 0.55;
-		pointer-events: none;
-	}
-	/* No glow on hover: the moon (or sun) just takes the press. Keyboard focus still shows. */
-	.sky-toggle:focus-visible {
-		outline: 2px solid currentColor;
-		outline-offset: 2px;
 	}
 	/* Sized in resize(); re-anchored within the page in frame(). */
 	.bg {

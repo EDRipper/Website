@@ -82,12 +82,6 @@
 		background: var(--bg);
 		color: var(--text);
 	}
-	:global(body.light) {
-		--bg: #f4f2ed;
-		--text: #1d1d1f;
-		--border: #bfb8ac;
-		--dim: #6b6862;
-	}
 	main {
 		box-sizing: border-box;
 		max-width: 760px;

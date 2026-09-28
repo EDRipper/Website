@@ -1,6 +1,6 @@
 <script lang="ts">
 	// main page type shit
-	import { flushSync, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import { portraitCols, portraitRows, portraitChars, portraitColors } from '$lib/portrait-ascii';
 	import DitherButterflies from '$lib/DitherButterflies.svelte';
 	import WalkingBeest from '$lib/WalkingBeest.svelte';
@@ -9,12 +9,87 @@
 	import { SONG_PREVIEWS } from '$lib/song-previews';
 	import { HOME_TITLE, HOME_DESCRIPTION, homeJsonLd } from '$lib/seo';
 	import ArrowEditor from '$lib/ArrowEditor.svelte';
-	import { TRAIL_PATH, measureTrail, sampleTrail, trailFinish, trailHead, type Pt, type TrailFrame } from '$lib/scroll-trail';
+	import { TRAIL_PATH, measureTrail, sampleTrail, trailRange, trailHead, type Pt, type TrailFrame, type TrailRange } from '$lib/scroll-trail';
 
 	// editArrow on /arrow-editor. scene: where the dithered landscape goes — 'header' (the home
 	// page): the page opens on it and sinks past its treeline into the content; 'footer' (the
 	// arrow editor): it rises at the foot of the page; 'backdrop' (/experiments): behind it all.
 	let { editArrow = false, scene = 'header' }: { editArrow?: boolean; scene?: 'backdrop' | 'footer' | 'header' } = $props();
+	// The home page's two-column "descent" layout. The landscape itself stands at the foot of
+	// the page (see the background below); the first screens are open sky.
+	const descent = $derived(scene === 'header');
+
+	// Photos piled down each side of the first screen, the way hackclub.com's landing does it:
+	// two stacks hugging the left and right edges and spilling off them, thrown down at strong
+	// angles so they read as a heap rather than a grid, with the middle column left to the
+	// title. `y` is a percentage of the first screen; `dx` is px in from that side, negative
+	// to hang off the edge. These are the 560px thumbnails in static/images/thumbs (~30KB
+	// each; the card art they're cut from runs to a megabyte apiece).
+	// Every print hangs off its edge (dx always negative) and they're spaced closer than they
+	// are tall, so each pile reads as one continuous band with no sky showing through.
+	const heroShots: {
+		src: string;
+		side: 'left' | 'right';
+		y: number;
+		dx: number;
+		r: number;
+		w: number;
+		pos?: string; // object-position for the crop, when the centre isn't the right part
+	}[] = [
+		// left pile, top to bottom
+		{ src: '/images/thumbs/ultramarathon.webp', side: 'left', y: -5, dx: -60, r: -8, w: 350 },
+		{ src: '/images/thumbs/fellowship.webp', side: 'left', y: 10, dx: -110, r: 11, w: 340 },
+		{ src: '/images/thumbs/hike-army.webp', side: 'left', y: 25, dx: -50, r: -14, w: 360 },
+		{ src: '/images/thumbs/ig-nyc.webp', side: 'left', y: 40, dx: -100, r: 8, w: 340 },
+		{ src: '/images/thumbs/unicycle.webp', side: 'left', y: 55, dx: -60, r: -11, w: 350 },
+		{ src: '/images/thumbs/ig-ski.webp', side: 'left', y: 70, dx: -95, r: 15, w: 330 },
+		// right pile, top to bottom, level with the left (the scroll hint has its own halo)
+		{ src: '/images/thumbs/european-parliament.webp', side: 'right', y: -5, dx: -70, r: 9, w: 350 },
+		{ src: '/images/thumbs/flagship-hackathon.webp', side: 'right', y: 10, dx: -110, r: -13, w: 340 },
+		{ src: '/images/thumbs/headshot.webp', side: 'right', y: 25, dx: -55, r: 10, w: 360 },
+		{ src: '/images/thumbs/ig-suits.webp', side: 'right', y: 40, dx: -100, r: -9, w: 340, pos: '50% 22%' }, // faces are near the top
+		{ src: '/images/thumbs/strandbeest.webp', side: 'right', y: 55, dx: -60, r: 14, w: 350 },
+		{ src: '/images/thumbs/euan.webp', side: 'right', y: 70, dx: -95, r: -8, w: 330 }
+	];
+	// The print that's been pulled out of its pile (by src), if any. Pointer-only: they're
+	// decorative, kept out of the tab order, and every one appears with a caption further down.
+	let openShot = $state<string | null>(null);
+
+	// The prints peel off their edges as the first screen scrolls away, top ones first: each
+	// takes its own slice of the scroll, starting later the lower it sits, so a wave runs down
+	// each pile and the sky is clear by the time the content below has come up. Scroll-linked,
+	// so it goes on a wrapper as a plain per-frame transform: a transition there would trail
+	// the scroll.
+	let peelP = $state(0); // how far the first screen has gone, 0..1 over the first 70% of a screen
+	const SIDES = ['left', 'right'] as const;
+	const PEEL = 520; // px of travel; clears the widest print
+	function peel(s: { y: number }): number {
+		const start = (Math.max(0, s.y) / 100) * 0.6; // the bottom print sets off past half way
+		const t = Math.min(1, Math.max(0, (peelP - start) / 0.4));
+		return t * t * (3 - 2 * t); // eased, 0..1
+	}
+	onMount(() => {
+		if (!descent) return;
+		const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		let raf = 0;
+		const update = () => {
+			raf = 0;
+			const p = Math.min(1, Math.max(0, window.scrollY / (window.innerHeight * 0.7)));
+			peelP = reduce ? 0 : p;
+			if (p > 0.05 && openShot) openShot = null; // a pulled-out print goes back once you scroll on
+		};
+		const onScroll = () => {
+			if (!raf) raf = requestAnimationFrame(update);
+		};
+		update();
+		window.addEventListener('scroll', onScroll, { passive: true });
+		window.addEventListener('resize', onScroll);
+		return () => {
+			cancelAnimationFrame(raf);
+			window.removeEventListener('scroll', onScroll);
+			window.removeEventListener('resize', onScroll);
+		};
+	});
 
 	// The email icon opens a draft with a friendly subject and message already filled in.
 	const mailHref = `mailto:euanripper2@gmail.com?subject=${encodeURIComponent('wow, you have such a cool site!')}&body=${encodeURIComponent("I couldn't resist reaching out to say so!")}`;
@@ -43,7 +118,7 @@
 		const rgb = (euanRGB ??= decodeRGB(portraitColors));
 		cv.width = portraitCols * CW;
 		cv.height = portraitRows * LH;
-		ctx.fillStyle = dark ? '#070608' : '#ffffff'; // on white in light mode
+		ctx.fillStyle = '#070608';
 		ctx.fillRect(0, 0, cv.width, cv.height);
 		ctx.font = `${FONT}px 'Departure Mono', ui-monospace, monospace`;
 		ctx.textBaseline = 'top';
@@ -55,13 +130,11 @@
 			for (let rx = 0; rx < portraitCols; rx++, p++) {
 				const ch = portraitChars[base + rx];
 				const r = rgb[p * 3], g = rgb[p * 3 + 1], b = rgb[p * 3 + 2];
-				// Each cell's backing: the colour dimmed toward black, or by day washed toward white.
-				ctx.fillStyle = dark
-					? `rgb(${r * BG},${g * BG},${b * BG})`
-					: `rgb(${255 - (255 - r) * 0.85},${255 - (255 - g) * 0.85},${255 - (255 - b) * 0.85})`;
+				// Each cell's backing: the colour dimmed toward black.
+				ctx.fillStyle = `rgb(${r * BG},${g * BG},${b * BG})`;
 				ctx.fillRect(rx * CW, ry * LH, CW + 1, LH + 1);
 				if (ch === ' ') continue;
-				ctx.fillStyle = dark ? `rgb(${r},${g},${b})` : `rgb(${r * 0.55},${g * 0.55},${b * 0.55})`; // deeper on white, so the picture reads
+				ctx.fillStyle = `rgb(${r},${g},${b})`;
 				ctx.fillText(ch, rx * CW, ry * LH);
 			}
 		}
@@ -105,41 +178,22 @@
 		return () => mq.removeEventListener('change', update);
 	});
 
-	// Theme: dark by default; pressing the moon in the scene switches to light (saved, and
-	// applied by app.html before first paint), and pressing the sun switches back.
-	let dark = $state(true);
-	onMount(() => {
-		dark = !document.body.classList.contains('light');
-	});
-	function toggleTheme() {
-		const next = !dark;
-		const swap = () => {
-			dark = next;
-			document.body.classList.toggle('light', !next);
-			flushSync(); // apply it (and redraw the background) now, for the crossfade's "after" snapshot
-		};
-		// Crossfade where view transitions are supported (timing in app.css); otherwise switch.
-		const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-		if (document.startViewTransition && !reduceMotion) document.startViewTransition(swap);
-		else swap();
-		try {
-			if (next) localStorage.removeItem('theme');
-			else localStorage.setItem('theme', 'light');
-		} catch {
-			// storage blocked: the choice just won't be remembered
-		}
-	}
 
 	// A nudge to scroll, for anyone still sat on the first screen after a few seconds. It goes
 	// as soon as they do.
 	let scrollHint = $state(false);
+	// Whether they're still on the first screen, which is what the arrow at the foot of the
+	// hero waits on. Unlike the hint above it shows straight away, rather than after a wait.
+	let atTop = $state(true);
 	onMount(() => {
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const onScroll = () => {
 			scrollHint = false;
+			atTop = false;
 			if (timer) clearTimeout(timer);
 			window.removeEventListener('scroll', onScroll);
 		};
+		atTop = window.scrollY === 0; // a reload partway down shouldn't show it
 		if (window.scrollY === 0) {
 			timer = setTimeout(() => {
 				if (window.scrollY === 0) scrollHint = true;
@@ -380,6 +434,7 @@
 	// the page scrolls, the head travels along the path until it lands. The path's shape
 	// is TRAIL_PATH in $lib/scroll-trail, designed with the editor at /arrow-editor.
 	let heroBodyEl = $state<HTMLElement>();
+	let heroSubEl = $state<HTMLElement>(); // the intro paragraph; the arrow starts beside its last word
 	let factsTextEl = $state<HTMLElement>();
 	// /descent: below the fold the butterflies wander the gaps between these, never over them.
 	let descentAvoid = $derived(
@@ -391,22 +446,22 @@
 		if (editArrow) return; // the editor draws its own arrow
 		let frame: TrailFrame | null = null;
 		let pts: Pt[] = []; // path samples, evenly spaced along it
-		let finish = 1; // scroll distance over which the head travels the path
+		let range: TrailRange = { start: 0, finish: 1 }; // the scroll window the head travels over
 		let dirty = true;
 		let raf = 0;
 
 		const draw = () => {
 			if (dirty) {
 				dirty = false;
-				frame = heroBodyEl && factsTextEl ? measureTrail(heroBodyEl, factsTextEl) : null;
+				frame = heroSubEl && factsTextEl ? measureTrail(heroSubEl, factsTextEl) : null;
 				pts = frame ? sampleTrail(frame, TRAIL_PATH) : [];
-				finish = frame ? trailFinish(frame, pts) : 1;
+				range = frame && pts.length > 1 ? trailRange(frame, pts) : { start: 0, finish: 1 };
 			}
 			if (!frame || pts.length < 2) {
 				trail = null;
 				return;
 			}
-			const head = trailHead(pts, window.scrollY, finish);
+			const head = trailHead(pts, window.scrollY, range);
 			trail = { ...head, w: frame.w, h: Math.max(...pts.map((p) => p.y)) + 40 };
 		};
 
@@ -529,46 +584,95 @@
 
 <Seo title={HOME_TITLE} description={HOME_DESCRIPTION} path="/" type="profile" jsonLd={homeJsonLd()} />
 
-<!-- Dithered plasma background with butterflies drawn into it. It fades to the
-     plain ground around the hero block and the main content column. -->
+<!-- One background canvas: a night sky over the first screens that eases into plain ground,
+     with the landscape and camp standing at the foot of the page. A landscape at both ends
+     needed a second canvas and a second render loop, which is what made scrolling drag. -->
 <DitherButterflies
-	{dark}
-	ontoggle={toggleTheme}
 	plasmaBg={false}
-	{scene}
-	sceneOpacity={!dark ? 0.5 : phone ? 0.3 : 0.2}
-	sceneContrast={phone || !dark ? 2 : 1}
+	scene={descent ? 'footer' : scene}
+	sceneOpacity={phone ? 0.3 : 0.2}
+	sceneContrast={phone ? 2 : 1}
 	mist={phone ? 0 : 0.45}
 	sceneEnd={sceneFootEl}
-	starSky={scene === 'footer' ? 2 : 0}
-	starOpacity={dark ? 0.45 : 0.6}
-	opacity={dark ? 0.08 : 0.2}
-	bfOpacity={dark ? 0.18 : 0.35}
+	starSky={descent || scene === 'footer' ? 2 : 0}
+	starOpacity={0.45}
+	opacity={0.08}
+	bfOpacity={0.18}
 	bfSaturation={0}
-	bfLightness={dark ? 1 : 0}
+	bfLightness={1}
 	count={5}
 	pixel={phone ? phonePixel : 4}
 	size={phone ? Math.round(24 / phonePixel) : 16}
 	speed={phone ? 2 / phonePixel : 1}
-	clearEls={scene === 'header' ? [] : [heroEl, mainEl]}
+	push={0}
+	clearEls={[heroEl, mainEl]}
 	clearPad={40}
 	clearRadius={100}
 	clearFloor={scene === 'backdrop' ? 0.35 : 0.15}
 	perchEls={!phone && scene === 'backdrop' ? [portraitEl] : []}
 	avoidEls={descentAvoid}
 	campEl={siteFootEl}
-	intro={phone || scene === 'header' ? 0 : scene === 'footer' ? 1200 : 3000}
+	intro={phone || descent ? 0 : scene === 'footer' ? 1200 : 3000}
 	onready={showContent}
 	fade={220}
 />
 
+<!-- A pulled-out print goes back on Escape, or on a click anywhere that isn't a print. -->
+<svelte:window
+	onkeydown={(e) => {
+		if (e.key === 'Escape') openShot = null;
+	}}
+	onclick={(e) => {
+		if (!(e.target as Element | null)?.closest?.('.pola')) openShot = null;
+	}}
+/>
+
 <p class="scroll-hint" class:on={scrollHint}>*scroll for more</p>
+
+<!-- A stream of pixel arrows at the foot of the first screen, so it reads as "keep going"
+     rather than ending at the skyline. Same arrows as the section dividers. -->
+{#if scene === 'header'}
+	<span class="hero-arrow" class:on={revealed && atTop} aria-hidden="true"></span>
+{/if}
 
 <!-- ── Hero: the first screen; everything else is a scroll away. Sits outside
      <main> so the background can close in around it. ── -->
 <section class="hero" class:descent={scene === 'header'} class:veiled={!revealed} class:shown={revealed}>
 	<div class="hero-inner" bind:this={heroEl}>
 		<div class="hero-heading">
+			{#if descent}
+				<!-- Decorative: the same shots appear on the cards further down. First in the
+				     block so the title paints over them rather than under. Each one can be pulled
+				     out of its pile with a click. -->
+				<div class="polaroids" aria-hidden="true">
+					{#each SIDES as side (side)}
+						<div class="pile">
+							{#each heroShots.filter((s) => s.side === side) as s (s.src)}
+								{@const k = peel(s)}
+								{@const dir = side === 'left' ? -1 : 1}
+								<!-- The slot takes the peel (slide out, and a little extra turn, so it reads as
+								     lifting off); the print inside keeps its eased hover/open transform. -->
+								<div
+									class="print"
+									class:open={openShot === s.src}
+									style="top: {s.y}%; {s.side}: {s.dx}px; --w: {s.w}px; transform: translateX({dir * k * PEEL}px) rotate({dir * k * 9}deg)"
+								>
+									<button
+										type="button"
+										class="pola {s.side}"
+										class:open={openShot === s.src}
+										tabindex="-1"
+										style="--r: {s.r}deg; --pos: {s.pos ?? 'center'}"
+										onclick={() => (openShot = openShot === s.src ? null : s.src)}
+									>
+										<img src={s.src} alt="" loading="lazy" decoding="async" />
+									</button>
+								</div>
+							{/each}
+						</div>
+					{/each}
+				</div>
+			{/if}
 			<p class="hero-title">Welcome<br />to my space</p>
 			<h1 class="hero-name">Euan Ripper</h1>
 		</div>
@@ -584,7 +688,7 @@
 			{#if scene === 'header'}
 				<p class="hi">Hi!</p>
 			{/if}
-			<p class="hero-sub">
+			<p class="hero-sub" bind:this={heroSubEl}>
 				I'm an outdoorsy nerd, I like circus arts, robotics, and organising events for creatives
 			</p>
 			<div class="socials hero-socials">
@@ -609,8 +713,8 @@
 
 <!-- Scroll trail from the hero down to the fun facts (see the trail logic above). -->
 {#if editArrow}
-	<ArrowEditor {heroBodyEl} {factsTextEl} />
-{:else if trail && scene !== 'header'}
+	<ArrowEditor heroBodyEl={heroSubEl} {factsTextEl} />
+{:else if trail}
 	<svg
 		class="scroll-trail"
 		class:veiled={!revealed}
@@ -631,13 +735,6 @@
 <main class="screen" class:descent-main={scene === 'header'} class:veiled={!revealed} class:shown={revealed} bind:this={mainEl}>
 	<!-- Phones only: marks where the first screen ends and the rest begins. -->
 	<hr class="fold-divider" />
-	<div class="section-head about-head" use:reveal>
-		<span class="line"></span>
-		<span class="arrow-stream" aria-hidden="true"></span>
-		<h2>About me</h2>
-		<span class="arrow-stream" aria-hidden="true"></span>
-		<span class="line"></span>
-	</div>
 	<div class="class-tag">
 		<div>
 			<h2>Fun facts</h2>
@@ -806,7 +903,7 @@
 
 		<a class="chart" href="https://github.com/edRipper" target="_blank" rel="noopener noreferrer">
 			<img
-				src={dark ? 'https://ghchart.rshah.org/39d353/edRipper' : 'https://ghchart.rshah.org/57575c/edRipper'}
+				src="https://ghchart.rshah.org/39d353/edRipper"
 				alt="GitHub commit history for edRipper"
 				loading="lazy"
 			/>
@@ -850,6 +947,8 @@
 
 
 	<!-- ── Missions (projects) ── -->
+	<div class="quests">
+	<div class="quest-col missions-col">
 	<div class="section-head" use:reveal>
 		<span class="line"></span>
 		<span class="arrow-stream" aria-hidden="true"></span>
@@ -891,8 +990,10 @@
 			{/each}
 		</div>
 	</section>
+	</div>
 
 	<!-- ── Sidequests ── -->
+	<div class="quest-col sidequests-col">
 	<div class="section-head" use:reveal>
 		<span class="line"></span>
 		<span class="arrow-stream" aria-hidden="true"></span>
@@ -919,6 +1020,8 @@
 			{/each}
 		</div>
 	</section>
+	</div>
+	</div>
 </main>
 
 <!-- Room below the content for the background's landscape to rise into. -->
@@ -935,21 +1038,7 @@
 </footer>
 
 <style>
-	/* Base theme variables live in app.css (site-wide); this file keeps only
-	   the homepage-specific light-mode overrides. */
-	:global(body.light) .model-ascii {
-		background: #fff;
-	}
-	:global(body.light) .mono {
-		filter: none;
-	}
-	:global(body.light) .chart img {
-		filter: none;
-		mix-blend-mode: multiply;
-	}
-	:global(body.light) .song-list .play {
-		color: var(--accent);
-	}
+	/* The theme variables live in app.css, site-wide. */
 
 	/* The nudge to scroll: small, top right, fading in once the visitor's sat a while. */
 	.scroll-hint {
@@ -962,6 +1051,7 @@
 		font-size: 0.9rem;
 		letter-spacing: 0.04em;
 		color: var(--text);
+		text-shadow: 0 0 6px var(--bg), 0 0 14px var(--bg); /* stays legible over the photo piles */
 		opacity: 0;
 		pointer-events: none;
 		transition: opacity 0.6s ease;
@@ -986,6 +1076,51 @@
 			transition: none;
 		}
 		.scroll-hint.on {
+			animation: none;
+		}
+	}
+
+	/* The arrows at the foot of the first screen: the same masked pixel stream as the section
+	   dividers, just larger. The mask shifts by exactly one cell per loop so the arrows flow
+	   continuously, and the box clips each one as the next follows it down. */
+	.hero-arrow {
+		position: fixed;
+		left: 50%;
+		bottom: 1.75rem;
+		z-index: 5;
+		width: 22px;
+		height: 56px;
+		transform: translateX(-50%);
+		background-color: var(--text);
+		image-rendering: pixelated;
+		-webkit-mask-image: url('/images/arrow-down.svg');
+		mask-image: url('/images/arrow-down.svg');
+		-webkit-mask-repeat: repeat-y;
+		mask-repeat: repeat-y;
+		-webkit-mask-position: center 0;
+		mask-position: center 0;
+		-webkit-mask-size: 22px 28px;
+		mask-size: 22px 28px;
+		animation: hero-arrow 0.85s linear infinite;
+		/* It lands on the dithered treeline, which is busy enough to swallow it — especially
+		   in light mode, where it's dark ink on mid-grey dots. A halo in the page's own
+		   ground lifts it off the texture. */
+		filter: drop-shadow(0 0 3px var(--bg)) drop-shadow(0 0 2px var(--bg));
+		opacity: 0;
+		transition: opacity 0.6s ease;
+		pointer-events: none;
+	}
+	.hero-arrow.on {
+		opacity: 0.75;
+	}
+	@keyframes hero-arrow {
+		to {
+			-webkit-mask-position: center 28px;
+			mask-position: center 28px;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.hero-arrow {
 			animation: none;
 		}
 	}
@@ -1116,10 +1251,97 @@
 		padding: 0 6vw;
 		box-sizing: border-box;
 	}
+	/* A screen of open sky with the title centred in it, and a quarter screen more below so
+	   the content underneath only comes up once you scroll. The bottom padding is what keeps
+	   the title on the middle of the first screen rather than the middle of the whole block. */
 	.descent .hero-heading {
-		height: 125vh; /* the landscape's screen, plus the trees fading out below it */
-		padding: 7vh 0;
+		position: relative; /* the scattered photos are placed against this block */
+		height: 125vh;
+		padding: 0 0 25vh;
 		box-sizing: border-box;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		align-items: center;
+		text-align: center;
+	}
+	/* Photos piled down the two sides of the opening screen. The box reaches out past the
+	   hero's 6vw padding to the viewport edges, so the piles can hang off the screen (the
+	   page clips horizontal overflow, so nothing scrolls sideways). Out of flow, so they
+	   don't shift the centred heading. */
+	.polaroids {
+		position: absolute;
+		top: 0;
+		left: -6vw;
+		right: -6vw;
+		height: 100vh; /* the first screen, not the whole block */
+		pointer-events: none;
+	}
+	.pile {
+		position: absolute;
+		inset: 0;
+	}
+	/* Places each print, and takes its scroll-linked peel (see `peel`) as a plain per-frame
+	   transform with no transition of its own. Its transform makes a stacking context, so the
+	   pulled-out print's z-index has to be set here, not on the button inside. (Not called
+	   .slot: that's the mission cards' inventory tiles, further down.) */
+	.print {
+		position: absolute;
+		/* Owns the size: --w is set on it per photo, and the screen-size scale is a separate
+		   factor because an inline custom property can't be overridden from here. */
+		width: calc(var(--w) * var(--pola-k, 1));
+		will-change: transform;
+	}
+	.print.open {
+		z-index: 10;
+	}
+	/* Paper prints: a thick light border with rounded corners and a soft shadow, at full
+	   opacity, so they sit on the sky the way white polaroids sit on a wall. */
+	.pola {
+		position: relative;
+		display: block;
+		width: 100%;
+		box-sizing: border-box;
+		margin: 0;
+		padding: 0;
+		border: 5px solid var(--text);
+		border-radius: 10px;
+		overflow: hidden;
+		background: var(--text);
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+		transform: rotate(var(--r));
+		pointer-events: auto; /* the container passes clicks through; the prints take them */
+		cursor: pointer;
+		transition:
+			transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1),
+			box-shadow 0.4s ease;
+	}
+	.pola:hover {
+		transform: rotate(var(--r)) scale(1.04);
+	}
+	/* Pulled out of the pile: slides in toward the middle, mostly straightens up and grows,
+	   over everything else. --out is the slide, signed per side. */
+	.pola.open {
+		transform: translateX(var(--out)) rotate(calc(var(--r) * 0.25)) scale(1.55);
+		box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
+	}
+	.pola.left {
+		--out: 240px;
+	}
+	.pola.right {
+		--out: -240px;
+	}
+	.pola img {
+		display: block;
+		width: 100%;
+		height: calc(var(--w) * var(--pola-k, 1) * 0.7);
+		object-fit: cover;
+		object-position: var(--pos, center);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.pola {
+			transition: none;
+		}
 	}
 	.descent .hero-body {
 		position: relative;
@@ -1148,9 +1370,8 @@
 		grid-column: 1 / -1;
 		min-width: 0;
 	}
-	/* "About me" sits level with the stats' heading; fun facts and the songs run down the left
-	   under it, with the stats panel alongside them both. */
-	.descent-main > .about-head,
+	/* Fun facts leads the left column, level with the stats' heading, and the songs run down
+	   under it with the stats panel alongside them both. */
 	.descent-main > .class-tag,
 	.descent-main > .personality {
 		grid-column: 1;
@@ -1159,14 +1380,20 @@
 		grid-row: span 2;
 	}
 	.descent-main > .personality + .section-head,
-	.descent-main > .stats,
-	.descent-main > .missions + .section-head,
-	.descent-main > .sidequests {
+	.descent-main > .stats {
 		grid-column: 2;
 	}
-	.descent-main > .story + .section-head,
-	.descent-main > .missions {
-		grid-column: 1;
+	/* Missions and sidequests as a two-column block of their own, each column holding its
+	   heading and its cards together. Left to the page grid's placement the two drifted into
+	   different rows, putting the sidequests heading a third of the way down the missions. */
+	.descent-main > .quests {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 1rem 4rem;
+		margin-top: 7rem;
+	}
+	.quests > .quest-col > .section-head {
+		margin-top: 0;
 	}
 	/* The story fills its block as two columns of text, so its lines stay readable. */
 	.descent-main > .story {
@@ -1179,47 +1406,60 @@
 	}
 	/* Missions and sidequests sit side by side, so their cards share a row height and the rows
 	   line up across the gutter (each card stretches to fill its row). */
-	.descent-main > .missions .mission-grid,
-	.descent-main > .sidequests .mission-grid {
+	.descent-main .missions .mission-grid,
+	.descent-main .sidequests .mission-grid {
 		grid-auto-rows: 17rem;
 	}
 	@media (max-width: 1300px) {
 		/* Narrower columns, so the briefs wrap further: taller rows. */
-		.descent-main > .missions .mission-grid,
-		.descent-main > .sidequests .mission-grid {
+		.descent-main .missions .mission-grid,
+		.descent-main .sidequests .mission-grid {
 			grid-auto-rows: 21rem;
+		}
+		/* Smaller prints, so the two piles leave the title its column. */
+		.polaroids {
+			--pola-k: 0.8;
 		}
 	}
 	/* Generous room between sections (and a way down for the butterflies). */
 	.screen.descent-main > .section-head {
 		margin-top: 7rem;
 	}
-	/* Fun facts sits right under the "About me" divider, which brings its own room. */
+	/* Fun facts starts the column now that the "About me" divider is gone, and needs more top
+	   room than the 7rem a section-head takes, since it has none of the divider's own height
+	   above its text. Found by measuring rather than reasoning: the stats panel spans two
+	   rows, so raising this margin also shifts the row the heading opposite sits in, and each
+	   increase only closes half the gap. 10rem lands the two headings within 8px. */
 	.screen.descent-main > .class-tag {
-		margin-top: 0;
+		margin-top: 10rem;
 		margin-bottom: 2.5rem;
 	}
 	@media (max-width: 1080px) {
+		/* No room for the side piles without burying the title (hackclub drops them here
+		   too); the starfield stands on its own. */
+		.polaroids {
+			display: none;
+		}
 		/* Too narrow for pairs: one column, top to bottom. */
 		.screen.descent-main {
 			grid-template-columns: minmax(0, 1fr);
 		}
 		.descent-main > .personality,
 		.descent-main > .personality + .section-head,
-		.descent-main > .stats,
-		.descent-main > .story + .section-head,
-		.descent-main > .missions,
-		.descent-main > .missions + .section-head,
-		.descent-main > .sidequests {
+		.descent-main > .stats {
 			grid-column: 1;
 			grid-row: auto;
+		}
+		/* Missions above sidequests rather than beside them. */
+		.descent-main > .quests {
+			grid-template-columns: minmax(0, 1fr);
 		}
 		.descent-main > .story {
 			columns: 1;
 		}
 		/* One column: nothing to line up with, so cards size to their own text again. */
-		.descent-main > .missions .mission-grid,
-		.descent-main > .sidequests .mission-grid {
+		.descent-main .missions .mission-grid,
+		.descent-main .sidequests .mission-grid {
 			grid-auto-rows: auto;
 		}
 	}
@@ -1233,10 +1473,10 @@
 		}
 	}
 	@media (max-width: 700px) {
-		/* The landscape's a shorter slice on phones, so a little less screen to scroll through. */
+		/* A little less sky to scroll through on a phone. */
 		.descent .hero-heading {
-			height: 115vh;
-			padding: 3rem 0 1rem;
+			height: 112vh;
+			padding: 0 0 14vh;
 		}
 		.descent .hero-inner {
 			padding: 0 1rem;

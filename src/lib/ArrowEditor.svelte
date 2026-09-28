@@ -14,7 +14,7 @@
 		toPx,
 		toTrail,
 		trailBeziers,
-		trailFinish,
+		trailRange,
 		trailHead,
 		type Pt,
 		type TrailFrame,
@@ -48,9 +48,9 @@
 			: ''
 	);
 	const pts = $derived(frame ? sampleTrail(frame, nodes) : []);
-	const finish = $derived(frame && pts.length > 1 ? trailFinish(frame, pts) : 1);
-	const head = $derived(pts.length > 1 ? trailHead(pts, scrollY, finish) : null);
-	const endHead = $derived(pts.length > 1 ? trailHead(pts, finish, finish) : null);
+	const range = $derived(frame && pts.length > 1 ? trailRange(frame, pts) : { start: 0, finish: 1 });
+	const head = $derived(pts.length > 1 ? trailHead(pts, scrollY, range) : null);
+	const endHead = $derived(pts.length > 1 ? trailHead(pts, range.finish, range) : null);
 	const rest = $derived(pts.length > 1 ? pts[Math.min(pts.length - 1, Math.round(TRAIL_STUB / TRAIL_STEP))] : null);
 	const knobs = $derived.by(() => {
 		const f = frame;
