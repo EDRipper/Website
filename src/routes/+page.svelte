@@ -25,8 +25,8 @@
 	// title. `y` is a percentage of the first screen; `dx` is px in from that side, negative
 	// to hang off the edge. These are the 560px thumbnails in static/images/thumbs (~30KB
 	// each; the card art they're cut from runs to a megabyte apiece).
-	// Every print hangs off its edge (dx always negative) and they're spaced closer than they
-	// are tall, so each pile reads as one continuous band with no sky showing through.
+	// Every print hangs off its edge (dx always negative) five to a side, spaced about
+	// a fifth of the screen apart, so sky shows between them rather than one solid band.
 	const heroShots: {
 		src: string;
 		side: 'left' | 'right';
@@ -36,20 +36,18 @@
 		w: number;
 		pos?: string; // object-position for the crop, when the centre isn't the right part
 	}[] = [
-		// left pile, top to bottom
+		// left pile, top to bottom — five prints, spaced ~20% apart so sky shows between them
 		{ src: '/images/thumbs/river.webp', side: 'left', y: -5, dx: -60, r: -8, w: 350 },
-		{ src: '/images/thumbs/hq-team.webp', side: 'left', y: 10, dx: -110, r: 11, w: 340 },
-		{ src: '/images/thumbs/hike-army.webp', side: 'left', y: 25, dx: -50, r: -14, w: 360 },
-		{ src: '/images/thumbs/lake.webp', side: 'left', y: 40, dx: -100, r: 8, w: 340 },
-		{ src: '/images/thumbs/unicycle.webp', side: 'left', y: 55, dx: -60, r: -11, w: 350 },
-		{ src: '/images/thumbs/ig-ski.webp', side: 'left', y: 70, dx: -95, r: 15, w: 330 },
+		{ src: '/images/thumbs/hq-team.webp', side: 'left', y: 15, dx: -110, r: 11, w: 340 },
+		{ src: '/images/thumbs/hike-army.webp', side: 'left', y: 35, dx: -50, r: -14, w: 360 },
+		{ src: '/images/thumbs/lake.webp', side: 'left', y: 55, dx: -100, r: 8, w: 340 },
+		{ src: '/images/thumbs/ig-ski.webp', side: 'left', y: 75, dx: -95, r: 15, w: 330 },
 		// right pile, top to bottom, level with the left (the scroll hint has its own halo)
 		{ src: '/images/thumbs/racing-portrait.webp', side: 'right', y: -5, dx: -70, r: 9, w: 350, pos: '50% 32%' }, // vertical shot; favour the face in the landscape crop
-		{ src: '/images/thumbs/flagship-hackathon.webp', side: 'right', y: 10, dx: -110, r: -13, w: 340 },
-		{ src: '/images/thumbs/headshot.webp', side: 'right', y: 25, dx: -55, r: 10, w: 360 },
-		{ src: '/images/thumbs/ig-suits.webp', side: 'right', y: 40, dx: -100, r: -9, w: 340, pos: '50% 22%' }, // faces are near the top
+		{ src: '/images/thumbs/flagship-hackathon.webp', side: 'right', y: 15, dx: -110, r: -13, w: 340 },
+		{ src: '/images/thumbs/headshot.webp', side: 'right', y: 35, dx: -55, r: 10, w: 360 },
 		{ src: '/images/thumbs/strandbeest-beach.webp', side: 'right', y: 55, dx: -60, r: 14, w: 350 },
-		{ src: '/images/thumbs/euan.webp', side: 'right', y: 70, dx: -95, r: -8, w: 330 }
+		{ src: '/images/thumbs/euan.webp', side: 'right', y: 75, dx: -95, r: -8, w: 330 }
 	];
 	// The print that's been pulled out of its pile (by src), if any. Pointer-only: they're
 	// decorative, kept out of the tab order, and every one appears with a caption further down.
