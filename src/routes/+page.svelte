@@ -37,18 +37,18 @@
 		pos?: string; // object-position for the crop, when the centre isn't the right part
 	}[] = [
 		// left pile, top to bottom
-		{ src: '/images/thumbs/ultramarathon.webp', side: 'left', y: -5, dx: -60, r: -8, w: 350 },
-		{ src: '/images/thumbs/fellowship.webp', side: 'left', y: 10, dx: -110, r: 11, w: 340 },
+		{ src: '/images/thumbs/river.webp', side: 'left', y: -5, dx: -60, r: -8, w: 350 },
+		{ src: '/images/thumbs/hq-team.webp', side: 'left', y: 10, dx: -110, r: 11, w: 340 },
 		{ src: '/images/thumbs/hike-army.webp', side: 'left', y: 25, dx: -50, r: -14, w: 360 },
-		{ src: '/images/thumbs/ig-nyc.webp', side: 'left', y: 40, dx: -100, r: 8, w: 340 },
+		{ src: '/images/thumbs/lake.webp', side: 'left', y: 40, dx: -100, r: 8, w: 340 },
 		{ src: '/images/thumbs/unicycle.webp', side: 'left', y: 55, dx: -60, r: -11, w: 350 },
 		{ src: '/images/thumbs/ig-ski.webp', side: 'left', y: 70, dx: -95, r: 15, w: 330 },
 		// right pile, top to bottom, level with the left (the scroll hint has its own halo)
-		{ src: '/images/thumbs/european-parliament.webp', side: 'right', y: -5, dx: -70, r: 9, w: 350 },
+		{ src: '/images/thumbs/racing-portrait.webp', side: 'right', y: -5, dx: -70, r: 9, w: 350, pos: '50% 32%' }, // vertical shot; favour the face in the landscape crop
 		{ src: '/images/thumbs/flagship-hackathon.webp', side: 'right', y: 10, dx: -110, r: -13, w: 340 },
 		{ src: '/images/thumbs/headshot.webp', side: 'right', y: 25, dx: -55, r: 10, w: 360 },
 		{ src: '/images/thumbs/ig-suits.webp', side: 'right', y: 40, dx: -100, r: -9, w: 340, pos: '50% 22%' }, // faces are near the top
-		{ src: '/images/thumbs/strandbeest.webp', side: 'right', y: 55, dx: -60, r: 14, w: 350 },
+		{ src: '/images/thumbs/strandbeest-beach.webp', side: 'right', y: 55, dx: -60, r: 14, w: 350 },
 		{ src: '/images/thumbs/euan.webp', side: 'right', y: 70, dx: -95, r: -8, w: 330 }
 	];
 	// The print that's been pulled out of its pile (by src), if any. Pointer-only: they're
