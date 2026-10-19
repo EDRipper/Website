@@ -36,12 +36,11 @@
 		w: number;
 		pos?: string; // object-position for the crop, when the centre isn't the right part
 	}[] = [
-		// left pile, top to bottom — five prints, spaced ~20% apart so sky shows between them
+		// left pile, top to bottom — four prints, spaced ~25% apart so sky shows between them
 		{ src: '/images/thumbs/river.webp', side: 'left', y: -5, dx: -60, r: -8, w: 350 },
-		{ src: '/images/thumbs/hq-team.webp', side: 'left', y: 15, dx: -110, r: 11, w: 340 },
-		{ src: '/images/thumbs/hike-army.webp', side: 'left', y: 35, dx: -50, r: -14, w: 360 },
-		{ src: '/images/thumbs/lake.webp', side: 'left', y: 55, dx: -100, r: 8, w: 340 },
-		{ src: '/images/thumbs/ig-ski.webp', side: 'left', y: 75, dx: -95, r: 15, w: 330 },
+		{ src: '/images/thumbs/hq-team.webp', side: 'left', y: 20, dx: -110, r: 11, w: 340 },
+		{ src: '/images/thumbs/lake.webp', side: 'left', y: 45, dx: -100, r: 8, w: 340 },
+		{ src: '/images/thumbs/ig-ski.webp', side: 'left', y: 70, dx: -95, r: 15, w: 330 },
 		// right pile, top to bottom, level with the left (the scroll hint has its own halo)
 		{ src: '/images/thumbs/racing-portrait.webp', side: 'right', y: -5, dx: -70, r: 9, w: 350, pos: '50% 32%' }, // vertical shot; favour the face in the landscape crop
 		{ src: '/images/thumbs/flagship-hackathon.webp', side: 'right', y: 15, dx: -110, r: -13, w: 340 },
