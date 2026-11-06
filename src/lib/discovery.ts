@@ -6,7 +6,7 @@ import { absolute, posts } from './content';
  * /recs (the list of visitors' song recommendations) is intentionally public but
  * deliberately left out of the sitemap; it's reachable only by its link.
  */
-export const indexablePaths = () => ['/', ...posts.filter((p) => p.published).map((p) => `/blog/${p.slug}`)];
+export const indexablePaths = () => ['/', '/cv', ...posts.filter((p) => p.published).map((p) => `/blog/${p.slug}`)];
 
 const xmlEscape = (s: string) =>
 	s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
