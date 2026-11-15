@@ -41,7 +41,7 @@
 
 <style>
 	.wrap {
-		max-width: 1020px;
+		max-width: min(1280px, 93vw);
 		margin: 0 auto;
 		padding: 46px 24px 120px;
 	}

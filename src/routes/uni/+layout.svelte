@@ -59,7 +59,11 @@
 	}
 
 	/* ---- shared study-notes component styles (used by every module page) ---- */
-	:global(.uni .m-wrap) { max-width: 820px; margin: 0 auto; padding: 44px 24px 120px; }
+	:global(.uni .m-wrap) { max-width: min(1240px, 93vw); margin: 0 auto; padding: 44px clamp(24px, 4vw, 56px) 120px; }
+	/* full-width canvas, but keep running text at a readable measure; rich blocks
+	   (worked examples, tables, demos, diagrams) get the extra width. */
+	:global(.uni .m-wrap p), :global(.uni .lede), :global(.uni .callout), :global(.uni .formula), :global(.uni .ans) { max-width: 82ch; }
+	:global(.uni .worked p), :global(.uni .worked .ans) { max-width: none; }
 	:global(.uni .m-kicker) { font-family: 'Inter', sans-serif; font-size: 12.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
 	:global(.uni .m-wrap h1) { font-size: 38px; line-height: 1.1; margin: 0.25em 0 0.3em; font-weight: 600; letter-spacing: -0.01em; }
 	:global(.uni .lede) { font-size: 19px; color: #4a453c; margin: 0 0 22px; }
@@ -93,7 +97,7 @@
 	:global(.uni .ans) { background: #eef5f1; border: 1px solid #cfe4d9; border-radius: 10px; padding: 10px 16px; font-family: 'Inter', sans-serif; font-size: 16px; margin-top: 8px; }
 	:global(.uni .ans b) { color: var(--good); }
 	:global(.uni figure) { margin: 24px 0; text-align: center; }
-	:global(.uni figure svg) { max-width: 100%; height: auto; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+	:global(.uni figure svg) { max-width: min(100%, 900px); height: auto; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
 	:global(.uni figcaption) { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--muted); margin-top: 9px; max-width: 60ch; margin-left: auto; margin-right: auto; }
 	:global(.uni .figtag) { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent2); display: block; margin-bottom: 2px; }
 	:global(.uni table.ref) { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; font-size: 14px; margin: 16px 0; }
