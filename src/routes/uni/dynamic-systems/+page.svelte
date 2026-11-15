@@ -1,5 +1,6 @@
 <script lang="ts">
 	import VectorAngle from '$lib/uni/VectorAngle.svelte';
+	import Sym from '$lib/uni/Sym.svelte';
 </script>
 
 <svelte:head><title>WSA034 Dynamic Systems Analysis - study notes</title></svelte:head>
@@ -43,7 +44,7 @@
 			moments about, M is a <b>free vector</b> - it can be applied anywhere on the body.
 		</div>
 
-		<div class="formula">M = F&middot;d &nbsp;&nbsp;|&nbsp;&nbsp; M = r &times; F &nbsp;&nbsp;|&nbsp;&nbsp; |M| = &radic;(M&#8339;&sup2; + M&#7527;&sup2; + M&#7611;&sup2;)</div>
+		<div class="formula"><Sym def="moment of the couple (N&middot;m) - how hard it twists">M</Sym> = <Sym def="magnitude of one of the two forces (N)">F</Sym>&middot;<Sym def="perpendicular distance between the two force lines (m)">d</Sym> &nbsp;&nbsp;|&nbsp;&nbsp; M = <Sym def="position vector from the axis to the force (m)">r</Sym> &times; F &nbsp;&nbsp;|&nbsp;&nbsp; |M| = &radic;(<Sym def="x-component of the moment vector">M&#8339;</Sym>&sup2; + <Sym def="y-component of the moment vector">M&#7527;</Sym>&sup2; + <Sym def="z-component of the moment vector">M&#7611;</Sym>&sup2;)</div>
 
 		<p>
 			The "point your right hand along the rotation" line is hard to picture, so here it is drawn: curl
@@ -112,7 +113,7 @@
 			the first moment about a centroidal axis is zero (the fact that kills a term in the parallel-axis
 			proof in Lesson 3). For a composite, take the area-weighted average of the sub-centroids.
 		</div>
-		<div class="formula">x&#772; = &Sigma;x&#7522;A&#7522; / &Sigma;A&#7522; &nbsp;&nbsp;&nbsp; y&#772; = &Sigma;y&#7522;A&#7522; / &Sigma;A&#7522;</div>
+		<div class="formula"><Sym def="x-coordinate of the whole shape's centroid">x&#772;</Sym> = <Sym def="sum of each piece's area times its own x-position">&Sigma;x&#7522;A&#7522;</Sym> / <Sym def="total area of all the pieces">&Sigma;A&#7522;</Sym> &nbsp;&nbsp;&nbsp; <Sym def="y-coordinate of the centroid">y&#772;</Sym> = <Sym def="sum of each piece's area times its own y-position">&Sigma;y&#7522;A&#7522;</Sym> / &Sigma;A&#7522;</div>
 
 		<div class="worked">
 			<span class="tag">worked example 2 &middot; his board numbers</span>
@@ -141,7 +142,7 @@
 			resultant tilted by the <b>angle of friction</b> tan&phi;&#8347; = &mu;&#8347; (eq. 8.3); tilt a board
 			until the block slips and that tilt - the <b>angle of repose</b> - equals &phi;&#8347;.
 		</div>
-		<div class="formula">F&#7524; = &mu;&#8347;N &nbsp;&nbsp;|&nbsp;&nbsp; F&#8342; = &mu;&#8342;N &nbsp;&nbsp;|&nbsp;&nbsp; tan&phi;&#8347; = &mu;&#8347;</div>
+		<div class="formula"><Sym def="maximum static friction force before it slips (N)">F&#7524;</Sym> = <Sym def="coefficient of static friction (how grippy the surfaces are)">&mu;&#8347;</Sym><Sym def="normal force pressing the surfaces together (N)">N</Sym> &nbsp;&nbsp;|&nbsp;&nbsp; <Sym def="kinetic friction force once sliding (N)">F&#8342;</Sym> = <Sym def="coefficient of kinetic friction (lower than static)">&mu;&#8342;</Sym>N &nbsp;&nbsp;|&nbsp;&nbsp; tan<Sym def="angle of friction - the tilt at which it just slips">&phi;&#8347;</Sym> = &mu;&#8347;</div>
 
 		<figure>
 			<span class="figtag">figure 2.1 &middot; free-body diagram + F vs P</span>
@@ -228,7 +229,7 @@
 			e^(&mu;&#8347;&beta;) (eq. 8.14). T&#8322; is always the larger (pulling) side, &beta; must be in
 			<b>radians</b>, and for n full wraps &beta; = 2&pi;n.
 		</div>
-		<div class="formula">T&#8322; / T&#8321; = e^(&mu;&#8347;&beta;) &nbsp;&nbsp; (&beta; in radians, T&#8322; = tight side)</div>
+		<div class="formula"><Sym def="tight-side tension - the bigger belt pull (N)">T&#8322;</Sym> / <Sym def="slack-side tension - the smaller belt pull (N)">T&#8321;</Sym> = e^(<Sym def="coefficient of static friction between belt and surface">&mu;&#8347;</Sym><Sym def="wrap angle: how far the belt hugs the surface, in radians">&beta;</Sym>) &nbsp;&nbsp; (&beta; in radians, T&#8322; = tight side)</div>
 		<div class="callout c-intuit">
 			<span class="lab">intuition &middot; the bollard</span>
 			VM's own example (Sample Prob 8.8): a hawser wrapped <b>two</b> turns holds 7500 N against a 150 N
@@ -264,7 +265,7 @@
 			I = I&#772; + md&sup2; (eq. 9.33) for mass. You <b>add</b> Ad&sup2; moving away from a centroidal axis
 			and <b>subtract</b> it moving to one; it only works if one axis is centroidal.
 		</div>
-		<div class="formula">I = I&#8339;&#8344; + m&middot;d&sup2; &nbsp;(mass) &nbsp;&nbsp;|&nbsp;&nbsp; I = I&#772; + A&middot;d&sup2; &nbsp;(area)</div>
+		<div class="formula"><Sym def="moment of inertia about the new, offset axis">I</Sym> = <Sym def="moment of inertia about the centroidal (centre-of-mass) axis">I&#8339;&#8344;</Sym> + <Sym def="mass of the body (kg)">m</Sym>&middot;<Sym def="distance between the two parallel axes (m)">d</Sym>&sup2; &nbsp;(mass) &nbsp;&nbsp;|&nbsp;&nbsp; I = <Sym def="second moment of area about the centroidal axis">I&#772;</Sym> + <Sym def="cross-sectional area">A</Sym>&middot;d&sup2; &nbsp;(area)</div>
 
 		<figure>
 			<span class="figtag">figure 3.1 &middot; animated</span>
@@ -374,7 +375,7 @@
 			(eq. 1.5), in pascals. This is the <i>average</i>; it is only uniform away from the load points, when
 			the load acts through the centroid (<b>centric</b> loading).
 		</div>
-		<div class="formula">&sigma; = P / A &nbsp;&nbsp;|&nbsp;&nbsp; A = &pi;d&sup2; / 4 &nbsp;(round bar)</div>
+		<div class="formula"><Sym def="normal stress - internal force spread over the area (Pa)">&sigma;</Sym> = <Sym def="axial force carried by the member (N)">P</Sym> / <Sym def="cross-sectional area the force acts over (m&sup2;)">A</Sym> &nbsp;&nbsp;|&nbsp;&nbsp; A = &pi;<Sym def="bar diameter (m)">d</Sym>&sup2; / 4 &nbsp;(round bar)</div>
 		<div class="callout c-trap">
 			<span class="lab">common trap &middot; sanity-check the magnitude</span>
 			Metal stresses run to hundreds of MPa; atmospheric pressure is ~0.1 MPa. If yours is not "up there",
@@ -438,7 +439,7 @@
 			(eq. 2.17), and 0 &lt; &nu; &lt; 1/2. Shear has its own Hooke law &tau; = G&gamma; (eq. 2.27), with
 			E = 2G(1 + &nu;) linking the three - only two are independent.
 		</div>
-		<div class="formula">&epsilon; = &delta;/L &nbsp;|&nbsp; &sigma; = E&epsilon; &nbsp;|&nbsp; &nu; = &minus;&epsilon;&#8343;&#8336;&#8348;/&epsilon;&#8336;&#8339; &nbsp;|&nbsp; &tau; = G&gamma; &nbsp;|&nbsp; E = 2G(1+&nu;)</div>
+		<div class="formula"><Sym def="strain - fractional stretch, dimensionless">&epsilon;</Sym> = <Sym def="change in length / extension (m)">&delta;</Sym>/<Sym def="original length (m)">L</Sym> &nbsp;|&nbsp; <Sym def="normal stress (Pa)">&sigma;</Sym> = <Sym def="Young's modulus - stiffness, slope of the elastic line (Pa)">E</Sym>&epsilon; &nbsp;|&nbsp; <Sym def="Poisson's ratio - sideways thinning per axial stretch">&nu;</Sym> = &minus;<Sym def="lateral (sideways) strain">&epsilon;&#8343;&#8336;&#8348;</Sym>/<Sym def="axial (along-load) strain">&epsilon;&#8336;&#8339;</Sym> &nbsp;|&nbsp; <Sym def="shear stress (Pa)">&tau;</Sym> = <Sym def="shear modulus - stiffness in shear (Pa)">G</Sym><Sym def="shear strain - angle of distortion (rad)">&gamma;</Sym> &nbsp;|&nbsp; E = 2G(1+&nu;)</div>
 
 		<figure>
 			<span class="figtag">figure 5.2 &middot; animated</span>
@@ -477,7 +478,7 @@
 			<tr><td>Composite centroid</td><td>x&#772; = &Sigma;x&#7522;A&#7522; / &Sigma;A&#7522;</td><td>VM &sect;5.1</td></tr>
 			<tr><td>Dry friction</td><td>F&#7524; = &mu;&#8347;N, &nbsp;tan&phi;&#8347; = &mu;&#8347;</td><td>VM 8.1-8.3</td></tr>
 			<tr><td>Journal bearing</td><td>r&#8355; = r&middot;sin&phi; &asymp; r&mu;</td><td>VM 8.5-8.7</td></tr>
-			<tr><td>Belt / capstan</td><td>T&#8322;/T&#8321; = e^(&mu;&#8347;&beta;)</td><td>VM 8.14</td></tr>
+			<tr><td>Belt / capstan</td><td><Sym def="tight-side tension (N)">T&#8322;</Sym>/<Sym def="slack-side tension (N)">T&#8321;</Sym> = e^(<Sym def="static friction coefficient">&mu;&#8347;</Sym><Sym def="wrap angle in radians">&beta;</Sym>)</td><td>VM 8.14</td></tr>
 			<tr><td>Parallel axis</td><td>I = I&#8339;&#8344; + m&middot;d&sup2;</td><td>VM 9.9 / 9.33</td></tr>
 			<tr><td>Second moment of area</td><td>I = &int;y&sup2; dA</td><td>VM &sect;9.1</td></tr>
 			<tr><td>Normal / shear stress</td><td>&sigma; = P/A, &nbsp;&tau; = V/A</td><td>MoM 1.5 / 1.8</td></tr>

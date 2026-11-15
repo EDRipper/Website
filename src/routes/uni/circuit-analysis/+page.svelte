@@ -1,5 +1,6 @@
 <script lang="ts">
 	import MaxPowerCurve from '$lib/uni/MaxPowerCurve.svelte';
+	import Sym from '$lib/uni/Sym.svelte';
 </script>
 
 <svelte:head><title>WSA030 Circuit Analysis - study notes</title></svelte:head>
@@ -41,7 +42,7 @@
 			full dP/dR&#8343; working "is in the notes, please have a look" - the result is all you carry forward.
 		</div>
 
-		<div class="formula">R&#8343; = R&#8348;&#8341; &nbsp;&nbsp;|&nbsp;&nbsp; P&#8339;&#8336;&#8339; = V&#8348;&#8341;&sup2; / 4R&#8348;&#8341; &nbsp;&nbsp;|&nbsp;&nbsp; P&#8339;&#8336;&#8339; = (V&#8338;&#8450;/2)(I&#8347;&#8450;/2)</div>
+		<div class="formula"><Sym def="load resistance - the thing you attach to draw power (&#8486;)">R&#8343;</Sym> = <Sym def="Thevenin / internal resistance of the source (&#8486;)">R&#8348;&#8341;</Sym> &nbsp;&nbsp;|&nbsp;&nbsp; <Sym def="maximum power delivered to the load (W)">P&#8339;&#8336;&#8339;</Sym> = <Sym def="Thevenin voltage - the source's open-circuit voltage (V)">V&#8348;&#8341;</Sym>&sup2; / 4R&#8348;&#8341; &nbsp;&nbsp;|&nbsp;&nbsp; P&#8339;&#8336;&#8339; = (<Sym def="open-circuit voltage - voltage with the load removed (V)">V&#8338;&#8450;</Sym>/2)(<Sym def="short-circuit current - current with the load shorted (A)">I&#8347;&#8450;</Sym>/2)</div>
 
 		<p>
 			At the match the peak power is <b>P&#8339;&#8336;&#8339; = V&#8348;&#8341;&sup2;/4R&#8348;&#8341;</b>. He gave a second route to the same
@@ -69,7 +70,7 @@
 			heat inside the source.</b> Maximum power and maximum efficiency are <b>competing</b> goals; you pick one.
 		</p>
 
-		<div class="formula">&eta; = P(load) / P(total) = R&#8343; / (R&#8343; + R&#8348;&#8341;) &nbsp;&rarr; at the match, &eta; = 50%</div>
+		<div class="formula"><Sym def="efficiency - fraction of generated power that reaches the load">&eta;</Sym> = P(load) / P(total) = <Sym def="load resistance (&#8486;)">R&#8343;</Sym> / (R&#8343; + <Sym def="internal / Thevenin resistance (&#8486;)">R&#8348;&#8341;</Sym>) &nbsp;&rarr; at the match, &eta; = 50%</div>
 
 		<h3>Drag the load - watch both move the wrong ways</h3>
 		<p>
