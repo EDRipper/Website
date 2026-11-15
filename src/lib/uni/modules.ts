@@ -83,9 +83,15 @@ export const modules: Module[] = [
 		code: 'MAA401',
 		title: 'Core Mathematics',
 		accent: '#9a3b2e',
-		summary: 'The mathematical toolkit underpinning the engineering modules.',
-		status: 'building',
-		lessons: []
+		summary: 'Matrices, determinants, solving systems by inversion, and the differentiation rules.',
+		status: 'live',
+		lessons: [
+			{ title: 'Matrix multiplication', date: '03 Nov', blurb: 'Row-by-column rule, compatibility, non-commutativity, transpose.' },
+			{ title: 'Identity & 2x2 inverse', date: '03 Nov', blurb: 'det = ad - bc, the inverse formula, singular matrices; a live calculator.' },
+			{ title: '3x3 determinants', date: '03 Nov', blurb: 'Minors, cofactors, the checkerboard signs, expanding on zeros.' },
+			{ title: 'Solving equations', date: '03 Nov', blurb: 'Ax = b solved as x = A inverse b.' },
+			{ title: 'Differentiation & vectors', date: '05 Nov', blurb: 'Chain, product, quotient rules; perpendicular vectors by dot product.' }
+		]
 	},
 	{
 		slug: 'applied-engineering',
