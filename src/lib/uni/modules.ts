@@ -98,8 +98,14 @@ export const modules: Module[] = [
 		code: 'WSA070',
 		title: 'Applied Engineering',
 		accent: '#6a645a',
-		summary: 'Design, build and presentation work across the engineering disciplines.',
-		status: 'building',
-		lessons: []
+		summary: 'Sports engineering: impact absorption, restitution, the sweet spot and design trade-offs.',
+		status: 'live',
+		lessons: [
+			{ title: 'Impact absorption', date: '02 Nov', blurb: 'Helmet design, foam density/thickness, single vs multiple impact, the PPE triangle.' },
+			{ title: 'Coefficient of restitution', date: '19 Oct', blurb: 'Momentum transfer, energy loss, rebound = e² h - a live drop demo.' },
+			{ title: 'The sweet spot', date: '19 Oct', blurb: 'Centre of mass, centre of percussion and vibration nodes - why it is an area.' },
+			{ title: 'Design trade-offs', date: 'throughout', blurb: 'Flex vs stiffness, light vs durable, and conflicting stakeholder requirements.' },
+			{ title: 'Testing & standards', date: 'throughout', blurb: 'Lab and player testing, and how standards drive equipment improvement.' }
+		]
 	}
 ];
