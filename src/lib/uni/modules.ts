@@ -53,9 +53,15 @@ export const modules: Module[] = [
 		code: 'WSA033',
 		title: 'Digital Systems',
 		accent: '#5a4a9e',
-		summary: 'Logic gates, Boolean algebra, Karnaugh maps, flip-flops and sequential logic.',
-		status: 'building',
-		lessons: []
+		summary: 'Binary arithmetic, two’s complement, hex and combinational logic timing.',
+		status: 'live',
+		lessons: [
+			{ title: 'Binary addition', date: '03 Nov', blurb: 'The four rules, carries, the half/full-adder link; 3 + 3 = 6.' },
+			{ title: 'Subtract, multiply, divide', date: '03 Nov', blurb: 'Borrowing, shift-and-add (15 x 15), long division in base 2.' },
+			{ title: 'Negative numbers', date: '03-06 Nov', blurb: 'Signed magnitude, first & second complement; a draggable explorer.' },
+			{ title: 'Subtraction by addition + hex', date: '03-06 Nov', blurb: 'Two’s-complement subtraction (18 - 7), overflow, hex addition.' },
+			{ title: 'Timing diagrams & logic', date: '06 Nov', blurb: 'Pulses, bit time, serial vs parallel, the one rule of combinational logic.' }
+		]
 	},
 	{
 		slug: 'programming',
