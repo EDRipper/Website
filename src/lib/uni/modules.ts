@@ -39,9 +39,14 @@ export const modules: Module[] = [
 		code: 'WSA030',
 		title: 'Circuit Analysis',
 		accent: '#b5631f',
-		summary: 'DC and AC circuit theory, network theorems, transient and steady-state response.',
-		status: 'building',
-		lessons: []
+		summary: 'Maximum power transfer, Thevenin equivalents and the power-vs-efficiency trade-off.',
+		status: 'live',
+		lessons: [
+			{ title: 'The theorem', date: '03 Nov', blurb: 'Max power when R_L = R_th; the P = Vth squared / 4R_th peak.' },
+			{ title: 'Power vs efficiency', date: '03 Nov', blurb: 'Why the matched load is only 50% efficient; power station vs antenna.' },
+			{ title: 'Thevenin worked example', date: '04 Nov', blurb: 'KVL reduction to Vth = 10V, R_th = 6 ohm, peak 4.17W.' },
+			{ title: 'Power as a function of R_L', date: '04 Nov', blurb: 'Voltage divider to Vth = 12V, R_th = 3.6 ohm, P(R_L) curve.' }
+		]
 	},
 	{
 		slug: 'digital-systems',
