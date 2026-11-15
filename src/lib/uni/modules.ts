@@ -68,9 +68,15 @@ export const modules: Module[] = [
 		code: 'WSA032',
 		title: 'Programming & Software Engineering',
 		accent: '#2f6d3b',
-		summary: 'Programming fundamentals and the software-engineering workflow.',
-		status: 'building',
-		lessons: []
+		summary: 'Python: decisions, loops, functions and writing code that survives bad input.',
+		status: 'live',
+		lessons: [
+			{ title: 'Decisions', date: '27 Oct', blurb: 'if / elif / else, comparison & boolean operators, an interactive leap-year checker.' },
+			{ title: 'Loops', date: '03 Nov', blurb: 'for vs while, avoiding infinite loops, break / continue, enumerate.' },
+			{ title: 'Functions', date: '27 Oct - 03 Nov', blurb: 'Return values, tuple unpacking, default arguments, scope.' },
+			{ title: 'Robust code', date: '27 Oct - 03 Nov', blurb: 'Verification against known answers, defensive programming, try / except.' },
+			{ title: 'Putting it together', date: 'exercises', blurb: 'Modulo and floor division, three-digit multiples of 7.' }
+		]
 	},
 	{
 		slug: 'core-maths',
