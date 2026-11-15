@@ -1,6 +1,11 @@
 <script lang="ts">
 	import VectorAngle from '$lib/uni/VectorAngle.svelte';
 	import Sym from '$lib/uni/Sym.svelte';
+	import LectureClip from '$lib/uni/LectureClip.svelte';
+	// Panopto session ids for the WSA034 recordings (only the two most recent are
+	// still inside the recording-search window; the 21-28 Oct lectures aged out).
+	const LEC_03NOV = '770a3281-5c79-4cf0-abbf-b4f70009851e';
+	const LEC_04NOV = '80eec7b9-0611-4ffc-9763-b4f8000addb0';
 </script>
 
 <svelte:head><title>WSA034 Dynamic Systems Analysis - study notes</title></svelte:head>
@@ -306,6 +311,9 @@
 		<div class="lesson-h">Lesson 4</div>
 		<div class="lesson-title">Belts, bollards &amp; second moment from scratch</div>
 		<div class="lesson-date">03 November &middot; capstan friction, belt-drive torque, integrating a second moment</div>
+		<LectureClip id={LEC_03NOV} start={632} label="capstan friction" />
+		<LectureClip id={LEC_03NOV} start={1294} label="belt drive" />
+		<LectureClip id={LEC_03NOV} start={2019} label="second moment" />
 
 		<div class="worked">
 			<span class="tag">worked example &middot; capstan, his board numbers</span>
@@ -362,6 +370,9 @@
 		<div class="lesson-h">Lesson 5</div>
 		<div class="lesson-title">Stress &amp; strain: will it break?</div>
 		<div class="lesson-date">04 November &middot; normal &amp; shear stress, Young, Poisson, factors of safety</div>
+		<LectureClip id={LEC_04NOV} start={0} label="normal stress" />
+		<LectureClip id={LEC_04NOV} start={684} label="shear stress" />
+		<LectureClip id={LEC_04NOV} start={1347} label="Young &amp; Poisson" />
 
 		<p>
 			New book (Mechanics of Materials). Statics asked "is it in equilibrium?"; this asks "does the
@@ -488,7 +499,9 @@
 		<p class="muted" style="font-size:13px;font-family:Inter,sans-serif;margin-top:24px">
 			Lecture content from the WSA034 Panopto recordings (21 Oct - 4 Nov); worked-example numbers
 			transcribed from the board. Textbook condensations cited to Beer &amp; Johnston, Vector Mechanics 12e
-			and Mechanics of Materials 7e. Diagrams are original schematic study aids, not to scale.
+			and Mechanics of Materials 7e. "Watch the clip" links open the ReVIEW recording at that timestamp
+			(needs your Loughborough login); lessons 1-3 (21-28 Oct) predate the recording-search window, so their
+			clips aren't linked yet. Diagrams are original schematic study aids, not to scale.
 		</p>
 	</section>
 </main>

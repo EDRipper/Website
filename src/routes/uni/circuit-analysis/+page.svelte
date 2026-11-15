@@ -1,6 +1,10 @@
 <script lang="ts">
 	import MaxPowerCurve from '$lib/uni/MaxPowerCurve.svelte';
 	import Sym from '$lib/uni/Sym.svelte';
+	import LectureClip from '$lib/uni/LectureClip.svelte';
+	// Panopto session ids for the WSA030 recordings these lessons are built from.
+	const LEC_03NOV = 'f55f3214-e767-45bc-a273-b4f7000aa884';
+	const LEC_04NOV = 'b77efe19-1d31-4ce4-b0f0-b4f8000c123e';
 </script>
 
 <svelte:head><title>WSA030 Circuit Analysis - study notes</title></svelte:head>
@@ -28,6 +32,7 @@
 		<div class="lesson-h">Lesson 1</div>
 		<div class="lesson-title">Maximum power transfer &amp; the matching condition</div>
 		<div class="lesson-date">03 November &middot; the theorem, the peak-power equation</div>
+		<LectureClip id={LEC_03NOV} start={75} label="the theorem" />
 
 		<p>
 			Setup: a real source (a Th&eacute;venin voltage V&#8348;&#8341; behind an internal resistance R&#8348;&#8341;)
@@ -63,6 +68,7 @@
 		<div class="lesson-h">Lesson 2</div>
 		<div class="lesson-title">The catch: power versus efficiency</div>
 		<div class="lesson-date">03-04 November &middot; the 50% result, impedance matching trade-offs</div>
+		<LectureClip id={LEC_04NOV} start={484} label="power vs efficiency" />
 
 		<p>
 			The twist that took up most of both sessions. When R&#8343; = R&#8348;&#8341; the two resistors are equal, the same
@@ -95,6 +101,7 @@
 		<div class="lesson-h">Lesson 3</div>
 		<div class="lesson-title">Th&eacute;venin reduction, then peak power</div>
 		<div class="lesson-date">04 November &middot; KVL, nulling sources, his worked challenge</div>
+		<LectureClip id={LEC_04NOV} start={891} label="thevenin reduction" />
 
 		<p>
 			The routine for any max-power question: collapse everything the load sees into one Th&eacute;venin
@@ -129,6 +136,7 @@
 		<div class="lesson-h">Lesson 4</div>
 		<div class="lesson-title">Power as a function of the load</div>
 		<div class="lesson-date">04 November &middot; the closing tutorial, voltage divider for V&#8348;&#8341;</div>
+		<LectureClip id={LEC_04NOV} start={2549} label="power as a function of R_L" />
 
 		<p>
 			His final challenge changed the ask: not <i>"what is the max power"</i> but <i>"give me an equation
@@ -172,7 +180,8 @@
 		<p class="muted" style="font-size:13px;font-family:Inter,sans-serif;margin-top:24px">
 			Lecture content from the WSA030 Circuit Analysis Panopto recordings (3 &amp; 4 November 2026);
 			worked-example numbers transcribed from the board. No set textbook for this module, so theory is
-			condensed from the lecturer's own notes rather than cited to a page. Diagrams are original schematic
+			condensed from the lecturer's own notes rather than cited to a page. Each "watch the clip" link opens
+			the ReVIEW recording at that timestamp (needs your Loughborough login). Diagrams are original schematic
 			study aids, not to scale.
 		</p>
 	</section>

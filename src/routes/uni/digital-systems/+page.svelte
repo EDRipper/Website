@@ -1,6 +1,10 @@
 <script lang="ts">
 	import TwosComplement from '$lib/uni/TwosComplement.svelte';
 	import Sym from '$lib/uni/Sym.svelte';
+	import LectureClip from '$lib/uni/LectureClip.svelte';
+	// Panopto session ids for the WSA033 recordings these lessons are built from.
+	const LEC_03NOV = '6fad9241-96df-43ab-a160-b4f70009773c';
+	const LEC_06NOV = '4f97a2ef-c3a6-41c6-944e-b4fa000c7818';
 </script>
 
 <svelte:head><title>WSA033 Digital Systems - study notes</title></svelte:head>
@@ -29,6 +33,7 @@
 		<div class="lesson-h">Lesson 1</div>
 		<div class="lesson-title">Binary addition</div>
 		<div class="lesson-date">03 November &middot; the four rules, carries, the OR-gate link</div>
+		<LectureClip id={LEC_03NOV} start={658} label="binary addition" />
 
 		<p>
 			His framing: binary addition is exactly decimal addition, just with base-2 carry rules. Start at the
@@ -59,6 +64,8 @@
 		<div class="lesson-h">Lesson 2</div>
 		<div class="lesson-title">Subtraction, multiplication &amp; division</div>
 		<div class="lesson-date">03 November &middot; borrowing, shift-and-add, long division</div>
+		<LectureClip id={LEC_03NOV} start={1096} label="subtraction" />
+		<LectureClip id={LEC_03NOV} start={1799} label="multiplication" />
 
 		<p>
 			All three mirror the decimal methods. <b>Subtraction</b> borrows from the next column when you hit
@@ -87,11 +94,20 @@
 		<div class="lesson-h">Lesson 3</div>
 		<div class="lesson-title">Representing negative numbers</div>
 		<div class="lesson-date">03-06 November &middot; signed magnitude, first &amp; second complement</div>
+		<LectureClip id={LEC_06NOV} start={148} label="the three systems" />
 
 		<p>
 			Three ways to write a negative in binary, and you must <b>state which one you are using</b> or the
 			reader cannot tell your &minus;39 from some positive number.
 		</p>
+
+		<div class="callout c-text">
+			<span class="lab">from the textbook &middot; Floyd <span class="cite">p.65</span></span>
+			Floyd covers the three signed-number forms together: sign-magnitude (&sect;2-6), then 1's and 2's
+			complement. Two's complement arithmetic (adding to subtract, with the end-carry discarded) is worked
+			on <span class="cite">p.77</span>, and the representable range for a given bit width is tabulated on
+			<span class="cite">p.66</span>.
+		</div>
 
 		<div class="callout c-text">
 			<span class="lab">the three systems</span>
@@ -122,6 +138,8 @@
 		<div class="lesson-h">Lesson 4</div>
 		<div class="lesson-title">Subtraction by addition, and hex</div>
 		<div class="lesson-date">03-06 November &middot; two's-complement subtraction, hexadecimal addition</div>
+		<LectureClip id={LEC_03NOV} start={2600} label="18 - 7 by addition" />
+		<LectureClip id={LEC_06NOV} start={1327} label="hex addition" />
 
 		<p>
 			The payoff: a computer never needs a subtractor. To do <b>a &minus; b</b>, take the two's complement
@@ -152,6 +170,16 @@
 		<div class="lesson-h">Lesson 5</div>
 		<div class="lesson-title">Timing diagrams, serial vs parallel &amp; combinational logic</div>
 		<div class="lesson-date">06 November &middot; pulses, bit time, the one rule of combinational logic</div>
+		<LectureClip id={LEC_06NOV} start={1731} label="timing diagrams" />
+		<LectureClip id={LEC_06NOV} start={2008} label="serial vs parallel" />
+		<LectureClip id={LEC_06NOV} start={2553} label="gates on a timing diagram" />
+
+		<div class="callout c-text">
+			<span class="lab">from the textbook &middot; Floyd <span class="cite">p.43</span></span>
+			Pulse waveforms, rising/falling edges and pulse width are introduced on <span class="cite">p.43</span>;
+			timing diagrams for gates on <span class="cite">p.125</span>; combinational-logic analysis in Ch.5,
+			starting <span class="cite">p.203</span>.
+		</div>
 
 		<p>
 			A <b>timing diagram</b> draws a signal as it changes over time: a <b>rising (leading) edge</b> from
@@ -224,19 +252,21 @@
 		<div class="lesson-title">Reference</div>
 		<table class="ref" style="margin-top:18px"><tbody>
 			<tr><th>topic</th><th>rule</th><th>book</th></tr>
-			<tr><td>Binary add</td><td>1 + 1 = 10 (sum 0, carry 1)</td><td>Floyd ch.2</td></tr>
-			<tr><td>First complement</td><td>invert every bit</td><td>Floyd ch.2</td></tr>
-			<tr><td>Second (two's) complement</td><td>invert, then + 1</td><td>Floyd ch.2</td></tr>
-			<tr><td>Signed magnitude</td><td>MSB = sign bit</td><td>Floyd ch.2</td></tr>
-			<tr><td>8-bit range</td><td>&minus;128 to +127</td><td>Floyd ch.2</td></tr>
-			<tr><td>Subtraction</td><td>a + two's-complement(b), drop overflow</td><td>Floyd ch.2</td></tr>
-			<tr><td>Multiplication</td><td>shift-and-add the 1-rows</td><td>Floyd ch.6</td></tr>
-			<tr><td>Combinational logic</td><td>output = gate(input), same bit-time</td><td>Floyd ch.3-5</td></tr>
+			<tr><td>Binary add</td><td>1 + 1 = 10 (sum 0, carry 1)</td><td>Floyd p.74</td></tr>
+			<tr><td>First complement</td><td>invert every bit</td><td>Floyd p.65</td></tr>
+			<tr><td>Second (two's) complement</td><td>invert, then + 1</td><td>Floyd p.65</td></tr>
+			<tr><td>Signed magnitude</td><td>MSB = sign bit</td><td>Floyd p.65</td></tr>
+			<tr><td>8-bit range</td><td>&minus;128 to +127</td><td>Floyd p.66</td></tr>
+			<tr><td>Subtraction</td><td>a + two's-complement(b), drop overflow</td><td>Floyd p.77</td></tr>
+			<tr><td>Multiplication</td><td>shift-and-add the 1-rows</td><td>Floyd p.76</td></tr>
+			<tr><td>Hex addition</td><td>column add, carry via base 10</td><td>Floyd p.95</td></tr>
+			<tr><td>Combinational logic</td><td>output = gate(input), same bit-time</td><td>Floyd p.203</td></tr>
 		</tbody></table>
 		<p class="muted" style="font-size:13px;font-family:Inter,sans-serif;margin-top:24px">
 			Lecture content from the WSA033 Digital Systems Panopto recordings (3 &amp; 6 November 2026);
-			worked-example numbers transcribed from the board. Textbook references to Floyd, Digital Fundamentals
-			11e, by the chapters the lecturer set (2 and 6). Diagrams are original schematic study aids.
+			worked-example numbers transcribed from the board. Textbook citations to Floyd, Digital Fundamentals
+			11e, by printed page (chapters 2 and 6, as set). Each "watch the clip" link opens the ReVIEW recording
+			at that timestamp (needs your Loughborough login). Diagrams are original schematic study aids.
 		</p>
 	</section>
 </main>

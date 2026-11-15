@@ -1,5 +1,8 @@
 <script lang="ts">
 	import LeapYear from '$lib/uni/LeapYear.svelte';
+	import LectureClip from '$lib/uni/LectureClip.svelte';
+	// Panopto session for the 3 Nov WSA032 lecture (the 27 Oct one aged out of search).
+	const LEC_03NOV = 'c9528522-26aa-4e66-b320-b4f700096e63';
 </script>
 
 <svelte:head><title>WSA032 Programming &amp; Software Engineering - study notes</title></svelte:head>
@@ -75,6 +78,9 @@ else:
 		<div class="lesson-h">Lesson 2</div>
 		<div class="lesson-title">Loops: for vs while</div>
 		<div class="lesson-date">03 November &middot; iteration, break/continue, enumerate</div>
+		<LectureClip id={LEC_03NOV} start={20} label="while loops" />
+		<LectureClip id={LEC_03NOV} start={1822} label="while vs for" />
+		<LectureClip id={LEC_03NOV} start={3318} label="break &amp; continue" />
 
 		<div class="two">
 			<div class="card-t"><h4 style="margin-top:0">for loop</h4><p style="margin:0">Use when the number of steps is <b>known</b> - iterate over a range or a list.</p></div>
@@ -117,6 +123,8 @@ while x &lt;= 10.0:
 		<div class="lesson-h">Lesson 3</div>
 		<div class="lesson-title">Functions: package &amp; reuse</div>
 		<div class="lesson-date">27 Oct - 03 Nov &middot; return values, tuple unpacking, scope</div>
+		<LectureClip id={LEC_03NOV} start={3917} label="enumerate &amp; tuple unpacking" />
+		<LectureClip id={LEC_03NOV} start={3062} label="variable scope" />
 
 		<p>
 			A function names a block of code so you can reuse it and test it in isolation. The lecture
@@ -149,6 +157,7 @@ tolerance(200, 1.0)   # overrides to 1.0</pre>
 		<div class="lesson-h">Lesson 4</div>
 		<div class="lesson-title">Robust code: verify &amp; defend</div>
 		<div class="lesson-date">27 Oct - 03 Nov &middot; verification, defensive programming, try / except</div>
+		<LectureClip id={LEC_03NOV} start={4537} label="try / except" />
 
 		<div class="callout c-intuit">
 			<span class="lab">verification</span>
